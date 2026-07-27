@@ -1,0 +1,20 @@
+port: 5284
+nodeId: ''
+publicHost: ''
+publicPort: 0
+ws:
+  endpoint: 'wss://example.com/mcp/ws?token=xxx'
+  localEndpoint: '/mcp/ws'
+  enabled: true
+zigbee2mqtt:
+  enabled: true
+  baseTopic: 'zigbee2mqtt'
+  autoStart: true
+  adapter: '/dev/ttyUSB0'
+broker:
+  enabled: true
+  port: 1883
+  wsPort: 8083
+mqttBridge:
+  enabled: true
+  brokers: []

@@ -1,0 +1,28 @@
+{
+  "name": "ejunz-node",
+  "packageManager": "yarn@4.2.0",
+  "private": true,
+  "workspaces": [
+    "packages/server",
+    "packages/server/node/ui"
+  ],
+  "scripts": {
+    "dev": "node -r ./register.js packages/server/index.ts --debug --node",
+    "dev:node": "yarn dev",
+    "dev:ui": "yarn workspace @ejunz/agent-edge-node-ui dev:ui",
+    "build:ui": "yarn workspace @ejunz/agent-edge-node-ui build:ui",
+    "start": "node -r ./register.js packages/server/index.ts --node"
+  },
+  "devDependencies": {
+    "@ejunz/register": "^0.3.2",
+    "@ejunz/utils": "^0.4.1",
+    "@types/node": "^20.19.10",
+    "typescript": "5.8.3"
+  },
+  "resolutions": {
+    "formidable": "patch:formidable@npm%3A2.1.2#~/.yarn/patches/formidable-npm-2.1.2-40ba18d67f.patch",
+    "http-proxy@npm:^1.18.1": "patch:http-proxy@npm%3A1.18.1#~/.yarn/patches/http-proxy-npm-1.18.1-a313c479c5.patch",
+    "@ejunz/utils": "^0.4.1",
+    "@ejunz/register": "^0.3.2"
+  }
+}

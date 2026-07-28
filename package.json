@@ -11,12 +11,21 @@
     "dev:node": "yarn dev",
     "dev:ui": "yarn workspace @ejunz/agent-edge-node-ui dev:ui",
     "build:ui": "yarn workspace @ejunz/agent-edge-node-ui build:ui",
-    "start": "node -r ./register.js packages/server/index.ts --node"
+    "start": "node -r ./register.js packages/server/index.ts --node",
+    "build": "yarn build:ui && node -r ./register.js build.ts",
+    "build:server": "node -r ./register.js build.ts",
+    "build:pkg": "yarn build:ui && node -r ./register.js build.ts && pkg dist/ejunz-node.js --targets linux,macos,win --out-path dist/pkg"
   },
   "devDependencies": {
     "@ejunz/register": "^0.3.2",
     "@ejunz/utils": "^0.4.1",
+    "@types/lodash": "^4.17.20",
     "@types/node": "^20.19.10",
+    "@yao-pkg/pkg": "^6.21.0",
+    "base16384": "^1.0.0",
+    "esbuild": "^0.25.9",
+    "lodash": "^4.17.21",
+    "postject": "^1.0.0-alpha.6",
     "typescript": "5.8.3"
   },
   "resolutions": {

@@ -1,0 +1,87 @@
+name: Build and release
+on:
+  push:
+    branches:
+      - main
+
+env:
+  YARN_ENABLE_IMMUTABLE_INSTALLS: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Corepack
+        run: corepack enable
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: yarn
+      - name: Build workspace
+        run: yarn build
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Corepack
+        run: corepack enable
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: yarn
+      - name: Build pkg
+        run: yarn build:pkg
+      - name: Collect release metadata
+        id: meta
+        run: |
+          echo "app_name=$(node -p \"require('./package.json').name\")" >> $GITHUB_OUTPUT
+          echo "version=$(node -p \"require('./packages/server/package.json').version\")" >> $GITHUB_OUTPUT
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      - name: Copy Origin Bundle to Temp
+        run: cp "dist/${{ steps.meta.outputs.app_name }}.js" "/tmp/${{ steps.meta.outputs.app_name }}.js"
+      - name: Copy Data Directory to Package Outputs
+        run: |
+          APP="${{ steps.meta.outputs.app_name }}"
+          if [ -d dist/data ]; then
+            [ -d "dist/pkg/${APP}-linux" ] && cp -r dist/data "dist/pkg/${APP}-linux/" || true
+            [ -d "dist/pkg/${APP}-macos" ] && cp -r dist/data "dist/pkg/${APP}-macos/" || true
+            [ -f "dist/pkg/${APP}-win.exe" ] && mkdir -p dist/pkg-win && cp "dist/pkg/${APP}-win.exe" dist/pkg-win/ && cp -r dist/data dist/pkg-win/ || true
+          fi
+      - name: Create Zip for Windows
+        run: |
+          APP="${{ steps.meta.outputs.app_name }}"
+          if [ -f "dist/pkg/${APP}-win.exe" ]; then
+            cd dist/pkg && zip -r "/tmp/${APP}-win.zip" "${APP}-win.exe" data/ 2>/dev/null || zip -r "/tmp/${APP}-win.zip" "${APP}-win.exe"
+          fi
+      - name: Create Tar for MacOS
+        run: |
+          APP="${{ steps.meta.outputs.app_name }}"
+          if [ -d "dist/pkg/${APP}-macos" ]; then
+            tar -czvf "/tmp/${APP}-macos.tar.gz" -C dist/pkg "${APP}-macos"
+          fi
+      - name: Create Tar for Linux
+        run: |
+          APP="${{ steps.meta.outputs.app_name }}"
+          if [ -d "dist/pkg/${APP}-linux" ]; then
+            tar -czvf "/tmp/${APP}-linux.tar.gz" -C dist/pkg "${APP}-linux"
+          fi
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.sha_short }}
+          files: |
+            /tmp/${{ steps.meta.outputs.app_name }}.js
+            /tmp/${{ steps.meta.outputs.app_name }}-win.zip
+            /tmp/${{ steps.meta.outputs.app_name }}-macos.tar.gz
+            /tmp/${{ steps.meta.outputs.app_name }}-linux.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

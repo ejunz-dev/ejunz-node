@@ -4,6 +4,7 @@ import {
   HashRouter, Outlet, Route, Routes,
 } from 'react-router-dom';
 import { Header } from './components/Header';
+import Auth from './pages/Auth';
 import Dashboard from './pages/Dashboard';
 import Devices from './pages/Devices';
 import Nodes from './pages/Nodes';
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="devices" element={<Devices />} />
           <Route path="nodes" element={<Nodes />} />
           <Route path="upstream" element={<Upstream />} />
+          <Route path="auth" element={<Auth />} />
         </Route>
       </Routes>
     </HashRouter>

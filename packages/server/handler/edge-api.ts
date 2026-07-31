@@ -4,26 +4,33 @@ import { Context } from 'cordis';
 import { config, isEdgeMode, saveConfig } from '../config';
 import { edgeRegistry } from '../edge/registry';
 import { maskEndpoint } from '../edge/protocol';
+import { getEdgeAuthConfig, requireEdgeAdmin as requireAdmin } from './edge-auth';
 
-function requireAdmin(handler: any) {
-    const request = handler.request;
-    const response = handler.response;
-    const expected = String((config as any).viewPass || '');
-    const authorization = request.headers?.authorization || '';
-    let valid = false;
-    if (authorization.startsWith('Basic ')) {
-        try {
-            const decoded = Buffer.from(authorization.slice(6), 'base64').toString();
-            const [, password] = decoded.split(':');
-            valid = decoded.startsWith('admin:') && password === expected;
-        } catch {}
+class EdgeAuthConfigHandler extends Handler<Context> {
+    async get() {
+        if (!requireAdmin(this)) return;
+        const auth = getEdgeAuthConfig();
+        this.response.body = {
+            enabled: auth.enabled,
+            username: auth.username,
+            passwordConfigured: Boolean(auth.password),
+        };
     }
-    if (!valid && request.query?.token) valid = String(request.query.token) === expected;
-    if (valid) return true;
-    response.status = 401;
-    response.addHeader('WWW-Authenticate', 'Basic realm="Ejunz Edge"');
-    response.body = { error: 'edge admin authentication required' };
-    return false;
+
+    async post() {
+        if (!requireAdmin(this)) return;
+        const body = this.request.body || {};
+        const auth = (config as any).auth || ((config as any).auth = {});
+        if (body.enabled !== undefined) auth.enabled = Boolean(body.enabled);
+        if (typeof body.username === 'string' && body.username.trim()) auth.username = body.username.trim();
+        if (typeof body.password === 'string' && body.password.length > 0) auth.password = body.password;
+        saveConfig();
+        this.response.body = {
+            ok: 1,
+            enabled: Boolean(auth.enabled),
+            username: String(auth.username || 'admin'),
+        };
+    }
 }
 
 class EdgeStatusHandler extends Handler<Context> {
@@ -247,6 +254,7 @@ class EdgeUpstreamRestartHandler extends Handler<Context> {
 
 export function apply(ctx: Context) {
     if (!isEdgeMode) return;
+    ctx.Route('edge-auth-config', '/api/edge/auth-config', EdgeAuthConfigHandler);
     ctx.Route('edge-status', '/api/edge/status', EdgeStatusHandler);
     ctx.Route('edge-nodes', '/api/edge/nodes', EdgeNodesHandler);
     ctx.Route('edge-node-tools', '/api/edge/nodes/:nodeId/tools', EdgeNodeToolsHandler);

@@ -89,9 +89,18 @@ const edgeSchema = Schema.object({
     nodePath: Schema.string().default('/node/conn'),
     broker: brokerSchema.default({ enabled: true, port: 1883, wsPort: 8083 }),
     auth: Schema.object({
+        enabled: Schema.boolean().default(true),
+        username: Schema.string().default('admin'),
+        password: Schema.string().default('edge'),
         tokenFile: Schema.string().default('data/edge-nodes.json'),
         requestTtl: Schema.number().default(300000),
-    }).default({ tokenFile: 'data/edge-nodes.json', requestTtl: 300000 }),
+    }).default({
+        enabled: true,
+        username: 'admin',
+        password: 'edge',
+        tokenFile: 'data/edge-nodes.json',
+        requestTtl: 300000,
+    }),
     upstream: Schema.object({
         enabled: Schema.boolean().default(false),
         endpoint: Schema.string().default(''),

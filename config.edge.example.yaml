@@ -1,10 +1,13 @@
 # Edge control-plane configuration
 port: 5283
 publicHost: ''
-# Use admin / viewPass for the control panel and management API.
+# Legacy fallback password. Prefer auth.username / auth.password below.
 viewPass: change-me
 nodePath: /node/conn
 auth:
+  enabled: true
+  username: admin
+  password: edge
   tokenFile: data/edge-nodes.json
   requestTtl: 300000
 broker:

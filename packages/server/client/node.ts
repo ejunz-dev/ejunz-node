@@ -564,7 +564,7 @@ async function handleInboundMcpEnvelope(ctx: Context | undefined, envelope: Edge
                 result: {
                     protocolVersion: '2024-11-05',
                     capabilities: { tools: {}, resources: {} },
-                    serverInfo: { name: `agent-edge-node-${getResolvedNodeId()}`, version: '1.0.0' },
+                    serverInfo: { name: `ejunz-node-${getResolvedNodeId()}`, version: '1.0.0' },
                 },
             });
             return;

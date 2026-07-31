@@ -22,8 +22,8 @@ class NodeUIHomeHandler extends Handler<Context> {
             // 检查构建文件是否存在，如果不存在则提示需要构建
             const bundlePath = path.resolve(__dirname, '../data/static.node-ui');
             const hasBundle = fs.existsSync(bundlePath);
-            const scriptPath = hasBundle ? `/node-ui/main.js?${randomHash}` : '/main.js';
-            const html = `<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Node Dashboard - @Ejunz/agent-edge</title></head><body><div id="root"></div><script>window.Context=JSON.parse('${JSON.stringify(context).replace(/\\/g, '\\\\').replace(/'/g, '\\\'')}')</script><script src="${scriptPath}"></script></body></html>`;
+            const scriptPath = `/node-ui/main.js${hasBundle ? `?${randomHash}` : ''}`;
+            const html = `<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Node Dashboard - Ejunz Node</title></head><body><div id="root"></div><script>window.Context=JSON.parse('${JSON.stringify(context).replace(/\\/g, '\\\\').replace(/'/g, '\\\'')}')</script><script src="${scriptPath}"></script></body></html>`;
             this.response.body = html;
         }
     }

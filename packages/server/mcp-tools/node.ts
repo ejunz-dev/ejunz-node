@@ -97,13 +97,6 @@ export function setDynamicNodeTools(entries: NodeToolRegistryEntry[]): void {
     }
 }
 
-export function clearDynamicNodeTools(): void {
-    for (const toolName of dynamicToolNames) {
-        nodeToolRegistry.delete(toolName);
-    }
-    dynamicToolNames.clear();
-}
-
 // 调用 Node 工具
 export async function callNodeTool(ctx: Context, request: { name: string; arguments: any }): Promise<any> {
     const { name, arguments: args } = request;

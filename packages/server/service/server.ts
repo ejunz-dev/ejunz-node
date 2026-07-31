@@ -35,7 +35,7 @@ export async function apply(pluginContext: Context) {
                         res.setHeader('Access-Control-Allow-Headers', corsAllowHeaders);
                         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
                         res.setHeader('Access-Control-Allow-Credentials', 'true');
-                        res.setHeader('X-Proxy-By', 'ejunz-dev/agent-edge');
+                        res.setHeader('X-Proxy-By', 'ejunz-dev/ejunz-node');
 
                         // https://github.com/vercel/next.js/blob/main/packages/next/src/server/lib/router-utils/proxy-request.ts
                         const cleanup = (err: Error) => {

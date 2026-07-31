@@ -9,8 +9,8 @@
   "scripts": {
     "dev": "node -r ./register.js packages/server/index.ts --debug --node",
     "dev:node": "yarn dev",
-    "dev:ui": "yarn workspace @ejunz/agent-edge-node-ui dev:ui",
-    "build:ui": "yarn workspace @ejunz/agent-edge-node-ui build:ui",
+    "dev:ui": "yarn workspace @ejunz/node-ui dev:ui",
+    "build:ui": "yarn workspace @ejunz/node-ui build:ui",
     "start": "node -r ./register.js packages/server/index.ts --node",
     "build": "yarn build:ui && node -r ./register.js build.ts",
     "build:server": "node -r ./register.js build.ts",
@@ -24,6 +24,7 @@
     "@yao-pkg/pkg": "^6.21.0",
     "base16384": "^1.0.0",
     "esbuild": "^0.25.9",
+    "fs-extra": "^11.4.0",
     "lodash": "^4.17.21",
     "postject": "^1.0.0-alpha.6",
     "typescript": "5.8.3"

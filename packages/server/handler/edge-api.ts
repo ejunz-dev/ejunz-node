@@ -52,6 +52,93 @@ class EdgeNodesHandler extends Handler<Context> {
     }
 }
 
+async function callNodeMcp(nodeId: string, name: string, args: any = {}) {
+    return edgeRegistry.request(nodeId, {
+        protocol: 'mcp',
+        action: 'jsonrpc',
+        payload: {
+            jsonrpc: '2.0',
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            method: 'tools/call',
+            params: { name, arguments: args },
+        },
+    });
+}
+
+class EdgeNodeToolsHandler extends Handler<Context> {
+    async get() {
+        if (!requireAdmin(this)) return;
+        const nodeId = String((this.request as any).params?.nodeId || '');
+        const node = edgeRegistry.get(nodeId);
+        if (!node) {
+            this.response.status = 404;
+            this.response.body = { error: 'node not found' };
+            return;
+        }
+        this.response.body = { nodeId, tools: node.tools || [] };
+    }
+}
+
+class EdgeNodeDevicesHandler extends Handler<Context> {
+    async get() {
+        if (!requireAdmin(this)) return;
+        const nodeId = String((this.request as any).params?.nodeId || '');
+        if (!edgeRegistry.get(nodeId)) {
+            this.response.status = 404;
+            this.response.body = { error: 'node not found' };
+            return;
+        }
+        try {
+            const result = await callNodeMcp(nodeId, 'zigbee_list_devices');
+            const devices = Array.isArray(result?.devices) ? result.devices : [];
+            const known = new Set(devices.map((device: any) => String(device.deviceId)));
+            const node = edgeRegistry.get(nodeId);
+            for (const tool of node?.tools || []) {
+                const metadata = tool?.metadata || {};
+                if (metadata.category !== 'zigbee-switch' || !metadata.deviceId) continue;
+                const deviceId = String(metadata.deviceId);
+                if (known.has(deviceId)) continue;
+                known.add(deviceId);
+                devices.push({
+                    deviceId,
+                    friendlyName: metadata.friendlyName || deviceId,
+                    model: metadata.model || '未知型号',
+                    vendor: metadata.vendor || '未知厂商',
+                    type: '端点',
+                    supportsOnOff: true,
+                    endpoint: metadata.endpoint,
+                });
+            }
+            this.response.body = { ...result, count: devices.length, devices };
+        } catch (e) {
+            this.response.status = 502;
+            this.response.body = { error: (e as Error).message };
+        }
+    }
+}
+
+class EdgeNodeDeviceControlHandler extends Handler<Context> {
+    async post() {
+        if (!requireAdmin(this)) return;
+        const nodeId = String((this.request as any).params?.nodeId || '');
+        if (!edgeRegistry.get(nodeId)) {
+            this.response.status = 404;
+            this.response.body = { error: 'node not found' };
+            return;
+        }
+        const body = this.request.body || {};
+        try {
+            this.response.body = await callNodeMcp(nodeId, 'zigbee_control_device', {
+                deviceId: String(body.deviceId || ''),
+                state: String(body.state || '').toUpperCase(),
+            });
+        } catch (e) {
+            this.response.status = 502;
+            this.response.body = { error: (e as Error).message };
+        }
+    }
+}
+
 class EdgeAuthorizeHandler extends Handler<Context> {
     async post() {
         if (!requireAdmin(this)) return;
@@ -124,6 +211,9 @@ export function apply(ctx: Context) {
     if (!isEdgeMode) return;
     ctx.Route('edge-status', '/api/edge/status', EdgeStatusHandler);
     ctx.Route('edge-nodes', '/api/edge/nodes', EdgeNodesHandler);
+    ctx.Route('edge-node-tools', '/api/edge/nodes/:nodeId/tools', EdgeNodeToolsHandler);
+    ctx.Route('edge-node-devices', '/api/edge/nodes/:nodeId/devices', EdgeNodeDevicesHandler);
+    ctx.Route('edge-node-device-control', '/api/edge/nodes/:nodeId/devices/control', EdgeNodeDeviceControlHandler);
     ctx.Route('edge-authorize', '/api/edge/nodes/:nodeId/authorize', EdgeAuthorizeHandler);
     ctx.Route('edge-revoke', '/api/edge/nodes/:nodeId/revoke', EdgeRevokeHandler);
     ctx.Route('edge-upstream', '/api/edge/upstream', EdgeUpstreamHandler);

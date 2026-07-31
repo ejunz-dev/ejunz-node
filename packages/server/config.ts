@@ -10,7 +10,7 @@ const logger = new Logger('init');
 export const isEdgeMode = process.argv.includes('--edge');
 export const isNodeMode = !isEdgeMode;
 const configName = isEdgeMode ? 'config.edge.yaml' : 'config.node.yaml';
-const exampleName = isEdgeMode ? 'config.edge.example.yaml' : 'config.example.yaml';
+const exampleName = isEdgeMode ? 'config.edge.example.yaml' : 'config.node.example.yaml';
 const configPath = path.resolve(process.cwd(), configName);
 fs.ensureDirSync(path.resolve(process.cwd(), 'data'));
 

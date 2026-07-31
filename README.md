@@ -1,12 +1,26 @@
 # ejunz-node
 
-Ejunz Node：Zigbee2MQTT 与 MQTT Broker 控制节点。
+Ejunz Node / Edge：Node 负责 Zigbee2MQTT 与本地 MQTT Broker，Edge 负责多 Node 的认证、聚合和上游连接。
+
+## Node 模式
 
 ```bash
 cp config.example.yaml config.node.yaml
-# 编辑 config.node.yaml，将 ws.endpoint 替换为实际的上游 MCP WebSocket 地址
-# ws.localEndpoint 是本机提供给客户端的 WebSocket 路径，默认 /mcp/ws
+# ws.endpoint 指向 Edge，例如 ws://edge-host:5283/node/conn
+# nodeId 必须为每个 Node 设置唯一值；授权成功后 ws.token 会自动写回配置
 yarn install && yarn build:ui && yarn dev
 ```
 
-未配置 `config.node.yaml` 时，服务会自动从 `config.example.yaml` 创建配置；启动前仍需替换示例中的 `ws.endpoint`，否则客户端会尝试连接占位地址。
+Node 首次连接 Edge 时不带 token，Edge 控制面板会显示待授权请求。打开 Edge 面板批准后，Node 会收到 token、保存到 `config.node.yaml`，以后重启会自动使用该 token 连接。
+
+## Edge 模式
+
+```bash
+cp config.edge.example.yaml config.edge.yaml
+# 设置 viewPass；如需连接 Ejunz，填写 upstream.endpoint / upstream.token
+yarn build:ui && yarn dev:edge
+```
+
+Edge 启动本地 MQTT TCP/WebSocket Broker，但不会启动 Zigbee2MQTT 或 Node 的 MQTT bridge。控制面板位于 `http://edge-host:5283/`，使用 `admin / viewPass` 登录；管理 API 位于 `/api/edge/*`。Edge 可以同时管理多个 Node，并把 Node 的 MCP/MQTT Envelope 转发到配置的 upstream。
+
+未配置对应的 `config.node.yaml` 或 `config.edge.yaml` 时，服务会从相应的 example 文件创建配置。

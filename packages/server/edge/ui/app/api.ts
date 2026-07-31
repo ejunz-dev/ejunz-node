@@ -13,6 +13,7 @@ export type EdgeStatus = {
   mode: 'edge';
   nodes: number;
   broker: boolean;
+  nodeEndpoint?: string;
   upstream?: {
     enabled: boolean;
     configured: boolean;

@@ -30,10 +30,16 @@ class EdgeStatusHandler extends Handler<Context> {
     async get() {
         if (!requireAdmin(this)) return;
         const upstream = (global as any).__edge_upstream;
+        const headers = (this.request as any).headers || {};
+        const forwardedProto = String(headers['x-forwarded-proto'] || 'http').split(',')[0].trim();
+        const protocol = forwardedProto === 'https' ? 'wss' : 'ws';
+        const host = String((config as any).publicHost || headers.host || `localhost:${(config as any).port || 5283}`);
+        const nodePath = String((config as any).nodePath || '/node/conn');
         this.response.body = {
             mode: 'edge',
             nodes: edgeRegistry.list().length,
             broker: Boolean((global as any).__ejunz_aedes),
+            nodeEndpoint: `${protocol}://${host}${nodePath.startsWith('/') ? nodePath : `/${nodePath}`}`,
             upstream: upstream?.status?.() || { enabled: false, connected: false },
         };
     }

@@ -3,7 +3,10 @@ nodeId: ''
 publicHost: ''
 publicPort: 0
 ws:
-  endpoint: 'wss://example.com/mcp/ws?token=xxx'
+  # Point this to the Edge node endpoint, not directly to Ejunz.
+  endpoint: 'ws://edge-host:5283/node/conn'
+  # Filled automatically after the Edge panel authorizes this node.
+  token: ''
   localEndpoint: '/mcp/ws'
   enabled: true
 zigbee2mqtt:

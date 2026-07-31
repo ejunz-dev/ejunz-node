@@ -4,14 +4,18 @@
   "private": true,
   "workspaces": [
     "packages/server",
-    "packages/server/node/ui"
+    "packages/server/node/ui",
+    "packages/server/edge/ui"
   ],
   "scripts": {
     "dev": "node -r ./register.js packages/server/index.ts --debug --node",
     "dev:node": "yarn dev",
+    "dev:edge": "node -r ./register.js packages/server/index.ts --debug --edge",
     "dev:ui": "yarn workspace @ejunz/node-ui dev:ui",
-    "build:ui": "yarn workspace @ejunz/node-ui build:ui",
+    "dev:edge:ui": "yarn workspace @ejunz/edge-ui dev:ui",
+    "build:ui": "yarn workspace @ejunz/node-ui build:ui && yarn workspace @ejunz/edge-ui build:ui",
     "start": "node -r ./register.js packages/server/index.ts --node",
+    "start:edge": "node -r ./register.js packages/server/index.ts --edge",
     "build": "yarn build:ui && node -r ./register.js build.ts",
     "build:server": "node -r ./register.js build.ts",
     "build:pkg": "yarn build:ui && node -r ./register.js build.ts && pkg dist/ejunz-node.js --targets linux,macos,win --out-path dist/pkg"

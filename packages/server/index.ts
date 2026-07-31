@@ -41,10 +41,25 @@ function applyNode(ctx: Context) {
     ctx.plugin(require('./client/node'));
 }
 
+function applyEdge(ctx: Context) {
+    ctx.plugin(require('./service/server'));
+    const brokerSvc = require('./service/broker');
+    ctx.plugin(brokerSvc.default || brokerSvc);
+    const edgeSvc = require('./service/edge');
+    ctx.plugin(edgeSvc.default || edgeSvc);
+    ctx.inject(['server'], (c) => {
+        c.plugin(require('./handler/edge-node'));
+        c.plugin(require('./handler/edge-api'));
+        c.plugin(require('./handler/edge-ui'));
+        c.server.listen();
+    });
+}
+
 async function apply(ctx: Context) {
     (global as any).__cordis_ctx = ctx;
-    applyNode(ctx);
-    logger.success('Tools started');
+    if (process.argv.includes('--edge')) applyEdge(ctx);
+    else applyNode(ctx);
+    logger.success(`${process.argv.includes('--edge') ? 'Edge' : 'Node'} started`);
     process.send?.('ready');
     await ctx.parallel('app/ready');
 }

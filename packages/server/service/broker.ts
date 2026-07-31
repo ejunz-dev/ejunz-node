@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { Context, Service } from 'cordis';
 import { Logger } from '../utils';
-import { config } from '../config';
+import { config, isEdgeMode } from '../config';
 
 export default class BrokerService extends Service<Context> {
     private readonly logger = new Logger('broker');
@@ -10,9 +10,9 @@ export default class BrokerService extends Service<Context> {
     private wsServer?: any;
 
     async [Service.init](): Promise<void> {
-        const nodeMode = process.argv.includes('--node');
+        const nodeOrEdgeMode = process.argv.includes('--node') || isEdgeMode;
         const brokerConf = (config as any).broker || {};
-        const enabled = nodeMode ? (brokerConf.enabled ?? true) : (brokerConf.enabled ?? false);
+        const enabled = nodeOrEdgeMode ? (brokerConf.enabled ?? true) : (brokerConf.enabled ?? false);
         if (!enabled) return;
         let aedes: any;
         try { aedes = require('aedes')(); } catch (e) {
@@ -22,6 +22,7 @@ export default class BrokerService extends Service<Context> {
         const net = require('node:net');
         const port = brokerConf.port || 1883;
         this.aedes = aedes;
+        (global as any).__ejunz_aedes = aedes;
         this.server = net.createServer(aedes.handle);
         this.server.listen(port, '0.0.0.0', () => this.logger.success(`MQTT Broker started at 0.0.0.0:${port}`));
         
@@ -207,6 +208,7 @@ export default class BrokerService extends Service<Context> {
         try { await new Promise((r) => this.server?.close(() => r(null))); } catch {}
         try { await new Promise((r) => this.wsServer?.close(() => r(null))); } catch {}
         try { this.aedes?.close?.(); } catch {}
+        if ((global as any).__ejunz_aedes === this.aedes) (global as any).__ejunz_aedes = undefined;
         this.server = undefined;
         this.wsServer = undefined;
         this.aedes = undefined;

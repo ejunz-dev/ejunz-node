@@ -7,44 +7,45 @@ import {
 
 const logger = new Logger('init');
 
-logger.info('Loading config');
-const configPath = path.resolve(process.cwd(), 'config.node.yaml');
+export const isEdgeMode = process.argv.includes('--edge');
+export const isNodeMode = !isEdgeMode;
+const configName = isEdgeMode ? 'config.edge.yaml' : 'config.node.yaml';
+const exampleName = isEdgeMode ? 'config.edge.example.yaml' : 'config.example.yaml';
+const configPath = path.resolve(process.cwd(), configName);
 fs.ensureDirSync(path.resolve(process.cwd(), 'data'));
 
 export let exit: Promise<void> | null = null;
 
 if (!fs.existsSync(configPath)) {
     exit = new Promise((resolve) => (async () => {
-        const example = path.resolve(process.cwd(), 'config.example.yaml');
+        const example = path.resolve(process.cwd(), exampleName);
         if (fs.existsSync(example)) {
             fs.copyFileSync(example, configPath);
-            logger.info('Created config.node.yaml from config.example.yaml');
+            logger.info('Created %s from %s', configName, exampleName);
         }
         resolve();
     })());
 }
+
+const brokerSchema = Schema.object({
+    enabled: Schema.boolean().default(true),
+    port: Schema.number().default(1883),
+    wsPort: Schema.number().default(8083),
+});
 
 const nodeSchema = Schema.object({
     nodeId: Schema.string().default(''),
     port: Schema.number().default(5284),
     publicHost: Schema.string().default(''),
     publicPort: Schema.number().default(0),
-    // 本地 MQTT Broker（默认启用，端口1883，无需配置）
-    broker: Schema.object({
-        enabled: Schema.boolean().default(true),
-        port: Schema.number().default(1883),
-        wsPort: Schema.number().default(8083),
-    }).default({ enabled: true, port: 1883, wsPort: 8083 }),
-    // MQTT 桥接配置（支持连接多个 broker）
+    viewPass: Schema.string().default(randomstring(8)),
+    broker: brokerSchema.default({ enabled: true, port: 1883, wsPort: 8083 }),
     mqttBridge: Schema.object({
         enabled: Schema.boolean().default(true),
         reconnect: Schema.object({
-            enabled: Schema.boolean().default(true), // 是否启用自动重连
-            period: Schema.number().default(5000), // 重连间隔（毫秒）
-        }).default({
-            enabled: true,
-            period: 5000,
-        }),
+            enabled: Schema.boolean().default(true),
+            period: Schema.number().default(5000),
+        }).default({ enabled: true, period: 5000 }),
         brokers: Schema.array(Schema.object({
             name: Schema.string().required(),
             mqttUrl: Schema.string().required(),
@@ -53,25 +54,19 @@ const nodeSchema = Schema.object({
             password: Schema.string().default(''),
             enabled: Schema.boolean().default(true),
             reconnect: Schema.object({
-                enabled: Schema.boolean().default(true), // 单个broker是否启用自动重连（继承全局配置）
-                period: Schema.number().default(5000), // 单个broker重连间隔（继承全局配置）
-            }).default({
-                enabled: true,
-                period: 5000,
-            }),
+                enabled: Schema.boolean().default(true),
+                period: Schema.number().default(5000),
+            }).default({ enabled: true, period: 5000 }),
         })).default([]),
     }).default({
         enabled: true,
-        reconnect: {
-            enabled: true,
-            period: 5000,
-        },
+        reconnect: { enabled: true, period: 5000 },
         brokers: [],
     }),
     zigbee2mqtt: Schema.object({
         enabled: Schema.boolean().default(true),
         baseTopic: Schema.string().default('zigbee2mqtt'),
-        autoStart: Schema.boolean().default(true), // node 模式下默认自动启动
+        autoStart: Schema.boolean().default(true),
         adapter: Schema.string().default('/dev/ttyUSB0'),
     }).default({
         enabled: true,
@@ -79,25 +74,45 @@ const nodeSchema = Schema.object({
         autoStart: true,
         adapter: '/dev/ttyUSB0',
     }),
-    // Edge WebSocket 连接配置（必需）
     ws: Schema.object({
-        endpoint: Schema.string().default(''), // 上游 Edge WebSocket endpoint (完整 URL，如 wss://example.com/mcp/ws?token=xxx)
-        localEndpoint: Schema.string().default('/mcp/ws'), // 本地 WebSocket 服务器路径（可选）
+        endpoint: Schema.string().default(''),
+        token: Schema.string().default(''),
+        localEndpoint: Schema.string().default('/mcp/ws'),
         enabled: Schema.boolean().default(true),
-    }).default({
-        endpoint: '',
-        localEndpoint: '/mcp/ws',
-        enabled: true,
-    }),
+    }).default({ endpoint: '', token: '', localEndpoint: '/mcp/ws', enabled: true }),
 }).description('Node Config');
 
-export const config = nodeSchema(
+const edgeSchema = Schema.object({
+    port: Schema.number().default(5283),
+    publicHost: Schema.string().default(''),
+    viewPass: Schema.string().default(randomstring(8)),
+    nodePath: Schema.string().default('/node/conn'),
+    broker: brokerSchema.default({ enabled: true, port: 1883, wsPort: 8083 }),
+    auth: Schema.object({
+        tokenFile: Schema.string().default('data/edge-nodes.json'),
+        requestTtl: Schema.number().default(300000),
+    }).default({ tokenFile: 'data/edge-nodes.json', requestTtl: 300000 }),
+    upstream: Schema.object({
+        enabled: Schema.boolean().default(false),
+        endpoint: Schema.string().default(''),
+        token: Schema.string().default(''),
+    }).default({ enabled: false, endpoint: '', token: '' }),
+}).description('Edge Config');
+
+export const config = (isEdgeMode ? edgeSchema : nodeSchema)(
     fs.existsSync(configPath)
         ? (yaml.load(fs.readFileSync(configPath, 'utf8')) as any)
         : {},
 );
 
-const envPort = process.env.PORT || process.env.NODE_PORT;
+// Secrets may be supplied by systemd without committing them to config.edge.yaml.
+if (isEdgeMode) {
+    if (process.env.EDGE_VIEW_PASS) config.viewPass = process.env.EDGE_VIEW_PASS;
+    if (process.env.EDGE_UPSTREAM_ENDPOINT) config.upstream.endpoint = process.env.EDGE_UPSTREAM_ENDPOINT;
+    if (process.env.EDGE_UPSTREAM_TOKEN) config.upstream.token = process.env.EDGE_UPSTREAM_TOKEN;
+}
+
+const envPort = process.env.PORT || process.env.NODE_PORT || (isEdgeMode ? process.env.EDGE_PORT : '');
 if (envPort != null && envPort !== '' && !Number.isNaN(Number(envPort))) {
     config.port = Number(envPort);
 }
@@ -105,7 +120,9 @@ if (envPort != null && envPort !== '' && !Number.isNaN(Number(envPort))) {
 export const saveConfig = () => {
     fs.writeFileSync(configPath, yaml.dump(config));
 };
+
+export const getConfigPath = () => configPath;
 export const version = packageVersion;
 
-logger.info(`Config loaded from ${configPath}`);
+logger.info(`Loading ${isEdgeMode ? 'edge' : 'node'} config from ${configPath}`);
 logger.info(`ejunz-node version: ${packageVersion}`);

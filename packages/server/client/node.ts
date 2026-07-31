@@ -3,7 +3,8 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import { Context } from 'cordis';
 import { Logger } from '@ejunz/utils';
-import { config } from '../config';
+import { config, saveConfig } from '../config';
+import { endpointWithToken } from '../edge/protocol';
 import { listNodeTools, setDynamicNodeTools, NodeToolRegistryEntry, NodeToolDefinition, callNodeTool } from '../mcp-tools/node';
 import { callZigbeeControlTool } from '../mcp-tools/nodeZigbee';
 
@@ -442,7 +443,7 @@ function resolveEdgeEndpoint(): string {
     const wsConfig = (config as any).ws || {};
     const explicit = (wsConfig.endpoint || '').trim();
     if (explicit) return explicit;
-    // 不再支持 upstream 配置，必须使用 ws.endpoint
+    // Node 只连接 Edge；上游 Ejunz endpoint 由 Edge 模式负责。
     logger.warn('未配置 ws.endpoint，请设置 Edge WebSocket endpoint');
     return '';
 }
@@ -595,8 +596,7 @@ async function handleInboundMcpEnvelope(ctx: Context | undefined, envelope: Edge
 
 function startEdgeEnvelopeBridge(ctx?: Context) {
     if (!ctx) return () => {};
-    const endpoint = resolveEdgeEndpoint();
-    if (!endpoint) {
+    if (!resolveEdgeEndpoint()) {
         logger.warn('未配置 ws.endpoint，跳过 Edge WS 信道');
         return () => {};
     }
@@ -658,6 +658,7 @@ function startEdgeEnvelopeBridge(ctx?: Context) {
                 jsonrpc: '2.0',
                 method: 'notifications/initialized',
                 params: {
+                    nodeId: getResolvedNodeId(),
                     host: resolveAdvertisedHost(),
                     port: resolveAdvertisedPort(),
                     toolsHash: computeToolsSignature(getAdvertisedToolsSnapshot()),
@@ -697,6 +698,32 @@ function startEdgeEnvelopeBridge(ctx?: Context) {
             parsed = JSON.parse(text);
         } catch (e) {
             logger.warn('Edge WS 收到非法 JSON: %s', (e as Error).message);
+            return;
+        }
+        if (parsed?.type === 'edge/auth_required') {
+            logger.warn('Edge 需要授权（node=%s），请打开：%s', parsed.nodeId || getResolvedNodeId(), parsed.authUrl || '');
+            return;
+        }
+        if (parsed?.type === 'edge/auth_success' && parsed.token) {
+            const wsConfig = (config as any).ws || ((config as any).ws = {});
+            wsConfig.token = String(parsed.token);
+            if (parsed.wsEndpoint) {
+                try {
+                    const url = new URL(String(parsed.wsEndpoint));
+                    url.searchParams.delete('token');
+                    wsConfig.endpoint = url.toString();
+                } catch { /* keep the configured endpoint */ }
+            }
+            saveConfig();
+            logger.success('Edge 授权成功，Token 已保存；准备使用 Token 重连');
+            setTimeout(() => { try { ws?.close(4001, 'authorized'); } catch {} }, 50);
+            return;
+        }
+        if (parsed?.type === 'edge/auth_expired' || parsed?.type === 'edge/auth_revoked') {
+            const wsConfig = (config as any).ws || ((config as any).ws = {});
+            wsConfig.token = '';
+            saveConfig();
+            logger.warn('Edge Token 已失效，需要重新授权');
             return;
         }
         let envelope: EdgeEnvelope;
@@ -749,9 +776,15 @@ function startEdgeEnvelopeBridge(ctx?: Context) {
     const connect = () => {
         if (stopped) return;
         if (ws && (ws.readyState === WS.OPEN || ws.readyState === WS.CONNECTING)) return;
-        logger.info('尝试连接 Edge WS: %s', endpoint);
+        const endpoint = resolveEdgeEndpoint();
+        if (!endpoint) {
+            logger.warn('未配置 ws.endpoint，跳过 Edge WS 信道');
+            return;
+        }
+        const socketEndpoint = endpointWithToken(endpoint, String((config as any).ws?.token || ''));
+        logger.info('尝试连接 Edge WS: %s', socketEndpoint.replace(/([?&]token=)[^&]+/i, '$1***'));
         try {
-            ws = new WS(endpoint, { perMessageDeflate: false, handshakeTimeout: 20000 });
+            ws = new WS(socketEndpoint, { perMessageDeflate: false, handshakeTimeout: 20000 });
         } catch (e) {
             logger.error('Edge WS 连接创建失败: %s', (e as Error).message);
             scheduleReconnect();
@@ -759,7 +792,7 @@ function startEdgeEnvelopeBridge(ctx?: Context) {
         }
 
         ws.on('open', () => {
-            logger.success('Edge WS 连接成功: %s', endpoint);
+            logger.success('Edge WS 连接成功: %s', socketEndpoint.replace(/([?&]token=)[^&]+/i, '$1***'));
             retryDelay = 5000;
             flushQueue();
             startHeartbeat();

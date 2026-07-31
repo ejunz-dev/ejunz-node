@@ -105,18 +105,6 @@ export const config = (isEdgeMode ? edgeSchema : nodeSchema)(
         : {},
 );
 
-// Secrets may be supplied by systemd without committing them to config.edge.yaml.
-if (isEdgeMode) {
-    if (process.env.EDGE_VIEW_PASS) config.viewPass = process.env.EDGE_VIEW_PASS;
-    if (process.env.EDGE_UPSTREAM_ENDPOINT) config.upstream.endpoint = process.env.EDGE_UPSTREAM_ENDPOINT;
-    if (process.env.EDGE_UPSTREAM_TOKEN) config.upstream.token = process.env.EDGE_UPSTREAM_TOKEN;
-}
-
-const envPort = process.env.PORT || process.env.NODE_PORT || (isEdgeMode ? process.env.EDGE_PORT : '');
-if (envPort != null && envPort !== '' && !Number.isNaN(Number(envPort))) {
-    config.port = Number(envPort);
-}
-
 export const saveConfig = () => {
     fs.writeFileSync(configPath, yaml.dump(config));
 };

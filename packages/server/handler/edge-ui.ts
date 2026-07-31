@@ -2,26 +2,15 @@
 import { Handler } from '@ejunz/framework';
 import { Context } from 'cordis';
 import path from 'node:path';
-import { config, isEdgeMode } from '../config';
+import { isEdgeMode } from '../config';
 import { fs, randomstring } from '../utils';
+import { isEdgeAdminAuthorized } from './edge-auth';
 
 const randomHash = randomstring(8).toLowerCase();
 
-function authorized(request: any) {
-    const expected = String((config as any).viewPass || '');
-    const auth = request.headers?.authorization || '';
-    if (!auth.startsWith('Basic ')) return String(request.query?.token || '') === expected;
-    try {
-        const decoded = Buffer.from(auth.slice(6), 'base64').toString();
-        return decoded.startsWith('admin:') && decoded.slice(6) === expected;
-    } catch {
-        return false;
-    }
-}
-
 class EdgeUIHomeHandler extends Handler<Context> {
     async get() {
-        if (!authorized(this.request)) {
+        if (!isEdgeAdminAuthorized(this.request)) {
             this.response.status = 401;
             this.response.addHeader('WWW-Authenticate', 'Basic realm="Ejunz Edge"');
             this.response.body = 'Authentication required';
@@ -36,6 +25,12 @@ class EdgeUIHomeHandler extends Handler<Context> {
 
 class EdgeUIStaticHandler extends Handler<Context> {
     async get() {
+        if (!isEdgeAdminAuthorized(this.request)) {
+            this.response.status = 401;
+            this.response.addHeader('WWW-Authenticate', 'Basic realm="Ejunz Edge"');
+            this.response.body = 'Authentication required';
+            return;
+        }
         const bundlePath = path.resolve(__dirname, '../data/static.edge-ui');
         this.response.type = 'text/javascript';
         if (fs.existsSync(bundlePath)) this.response.body = fs.readFileSync(bundlePath, 'utf8');

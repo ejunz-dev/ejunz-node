@@ -5,6 +5,7 @@ import {
 } from 'react-router-dom';
 import { Header } from './components/Header';
 import Dashboard from './pages/Dashboard';
+import Devices from './pages/Devices';
 import Nodes from './pages/Nodes';
 import Upstream from './pages/Upstream';
 
@@ -32,6 +33,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<DefaultLayout />}>
           <Route index element={<Dashboard />} />
+          <Route path="devices" element={<Devices />} />
           <Route path="nodes" element={<Nodes />} />
           <Route path="upstream" element={<Upstream />} />
         </Route>

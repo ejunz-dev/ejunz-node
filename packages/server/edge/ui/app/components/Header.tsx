@@ -2,7 +2,7 @@ import {
   Container, Group, rem, Tabs, Text, Title,
 } from '@mantine/core';
 import {
-  IconDashboard, IconDevices, IconNetwork,
+  IconDashboard, IconDevices, IconNetwork, IconPlug,
 } from '@tabler/icons-react';
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -11,6 +11,7 @@ const iconStyle = { width: rem(18), height: rem(18) };
 
 const mainLinks = [
   { link: '/', label: 'Dashboard', icon: <IconDashboard style={iconStyle} /> },
+  { link: '/devices', label: '设备控制', icon: <IconPlug style={iconStyle} /> },
   { link: '/nodes', label: 'Node 管理', icon: <IconDevices style={iconStyle} /> },
   { link: '/upstream', label: '上游连接', icon: <IconNetwork style={iconStyle} /> },
 ];

@@ -43,6 +43,8 @@ export async function callZigbeeListDevicesTool(ctx: Context, args: any): Promis
             powerSource: d.powerSource,
             lastSeen: d.lastSeen ? new Date(d.lastSeen).toISOString() : null,
             supportsOnOff: d.supportsOnOff !== false, // zigbee2mqtt 设备默认支持开关
+            state: d.state || {},
+            currentState: d.state?.state || d.state?.power || null,
         })),
     };
     

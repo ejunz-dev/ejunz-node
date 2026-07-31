@@ -52,6 +52,28 @@ class EdgeNodesHandler extends Handler<Context> {
     }
 }
 
+function getCurrentDeviceState(node: any, deviceId: string) {
+    const states = node?.deviceStates || {};
+    const direct = states[deviceId];
+    const read = (value: any) => {
+        if (!value || typeof value !== 'object') return undefined;
+        if (value.state === 'ON' || value.state === 'OFF') return value.state;
+        if (value.power === 'ON' || value.power === 'OFF') return value.power;
+        return undefined;
+    };
+    const directState = read(direct);
+    if (directState) return directState;
+    const endpoint = String(deviceId).match(/^(.+)_(l\d+)$/);
+    if (endpoint) {
+        const baseState = states[endpoint[1]];
+        if (baseState?.[`state_${endpoint[2]}`] === 'ON' || baseState?.[`state_${endpoint[2]}`] === 'OFF') {
+            return baseState[`state_${endpoint[2]}`];
+        }
+        if (baseState?.state === 'ON' || baseState?.state === 'OFF') return baseState.state;
+    }
+    return undefined;
+}
+
 async function callNodeMcp(nodeId: string, name: string, args: any = {}) {
     return edgeRegistry.request(nodeId, {
         protocol: 'mcp',
@@ -91,6 +113,15 @@ class EdgeNodeDevicesHandler extends Handler<Context> {
         try {
             const result = await callNodeMcp(nodeId, 'zigbee_list_devices');
             const devices = Array.isArray(result?.devices) ? result.devices : [];
+            for (const device of devices) {
+                if (device.currentState === 'ON' || device.currentState === 'OFF') continue;
+                try {
+                    const status = await callNodeMcp(nodeId, 'zigbee_get_device_status', { deviceId: device.deviceId });
+                    if (status?.currentState === 'ON' || status?.currentState === 'OFF') device.currentState = status.currentState;
+                } catch {
+                    // The list remains usable when a device does not expose a readable state.
+                }
+            }
             const known = new Set(devices.map((device: any) => String(device.deviceId)));
             const node = edgeRegistry.get(nodeId);
             for (const tool of node?.tools || []) {
@@ -107,7 +138,14 @@ class EdgeNodeDevicesHandler extends Handler<Context> {
                     type: '端点',
                     supportsOnOff: true,
                     endpoint: metadata.endpoint,
+                    currentState: devices.find((device: any) => String(device.deviceId) === String(metadata.originalDeviceId))?.state?.[`state_${metadata.endpoint}`]
+                        || devices.find((device: any) => String(device.deviceId) === String(metadata.originalDeviceId))?.currentState
+                        || null,
                 });
+            }
+            for (const device of devices) {
+                const currentState = getCurrentDeviceState(node, String(device.deviceId || ''));
+                if (currentState) device.currentState = currentState;
             }
             this.response.body = { ...result, count: devices.length, devices };
         } catch (e) {

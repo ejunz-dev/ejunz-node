@@ -19,6 +19,7 @@ export type EdgeNodeRecord = {
     requestId?: string;
     requestExpiresAt?: number;
     metadata?: Record<string, any>;
+    deviceStates?: Record<string, any>;
     connection?: any;
 };
 
@@ -73,10 +74,12 @@ class EdgeRegistry {
             status: 'offline',
             tools: [],
             lastSeen: Date.now(),
+            deviceStates: {},
             ...existing,
             ...metadata,
             nodeId: id,
         };
+        record.deviceStates ||= {};
         this.nodes.set(id, record);
         return record;
     }
@@ -213,6 +216,14 @@ class EdgeRegistry {
 
     receive(nodeId: string, envelope: EdgeEnvelope) {
         const record = this.node(nodeId, { lastSeen: Date.now() });
+        if (envelope.protocol === 'mqtt' && envelope.action === 'publish') {
+            const match = String(envelope.channel || '').match(/^node\/[^/]+\/devices\/([^/]+)\/state$/);
+            if (match) {
+                record.deviceStates ||= {};
+                record.deviceStates[match[1]] = envelope.payload || {};
+                this.persist();
+            }
+        }
         const pending = envelope.traceId ? this.pendingRequests.get(envelope.traceId) : undefined;
         if (pending && pending.nodeId === nodeId) {
             clearTimeout(pending.timer);

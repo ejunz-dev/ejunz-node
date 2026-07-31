@@ -1,5 +1,5 @@
 import {
-  Badge, Button, Group, Paper, Select, SimpleGrid, Stack, Text, Title,
+  Badge, Button, Group, Paper, Select, SimpleGrid, Stack, Switch, Text, Title,
 } from '@mantine/core';
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, EdgeNode } from '../api';
@@ -47,6 +47,8 @@ export default function Devices() {
 
   useEffect(() => {
     void loadDevices().catch((e) => setError((e as Error).message));
+    const timer = window.setInterval(() => void loadDevices().catch((e) => setError((e as Error).message)), 2000);
+    return () => window.clearInterval(timer);
   }, [loadDevices]);
 
   const control = async (deviceId: string, state: 'ON' | 'OFF' | 'TOGGLE') => {
@@ -101,28 +103,18 @@ export default function Devices() {
                 <Badge color={device.online === false ? 'gray' : 'green'}>{device.online === false ? '离线' : '在线'}</Badge>
               </Group>
               <Text size="sm" c="dimmed">{device.vendor || '未知厂商'} · {device.model || '未知型号'}</Text>
-              <Group gap="xs" mt="sm">
-                <Button
-                  size="xs"
-                  disabled={device.supportsOnOff === false}
-                  loading={busyDevice === device.deviceId}
-                  onClick={() => void control(device.deviceId, 'ON')}
-                >开启</Button>
-                <Button
-                  size="xs"
-                  variant="light"
-                  color="gray"
-                  disabled={device.supportsOnOff === false}
-                  loading={busyDevice === device.deviceId}
-                  onClick={() => void control(device.deviceId, 'OFF')}
-                >关闭</Button>
-                <Button
-                  size="xs"
-                  variant="default"
-                  disabled={device.supportsOnOff === false}
-                  loading={busyDevice === device.deviceId}
-                  onClick={() => void control(device.deviceId, 'TOGGLE')}
-                >切换</Button>
+              <Group justify="space-between" align="center" mt="sm">
+                <Text size="sm" c={device.currentState === 'ON' ? 'green' : 'dimmed'}>
+                  状态：{device.currentState === 'ON' ? '开启' : device.currentState === 'OFF' ? '关闭' : '未知'}
+                </Text>
+                <Switch
+                  size="md"
+                  onLabel="ON"
+                  offLabel="OFF"
+                  checked={device.currentState === 'ON'}
+                  disabled={device.supportsOnOff === false || busyDevice === device.deviceId}
+                  onChange={(event) => void control(device.deviceId, event.currentTarget.checked ? 'ON' : 'OFF')}
+                />
               </Group>
             </Stack>
           </Paper>

@@ -1,8 +1,8 @@
 import {
-  Button, Group, Paper, SimpleGrid, Text, Title,
+  Button, CopyButton, Group, Paper, SimpleGrid, Text, TextInput, Title,
 } from '@mantine/core';
 import {
-  IconApi, IconDeviceDesktop, IconPlug, IconShieldCheck,
+  IconApi, IconCheck, IconCopy, IconDeviceDesktop, IconPlug, IconShieldCheck,
 } from '@tabler/icons-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, EdgeNode, EdgeStatus } from '../api';
@@ -86,6 +86,31 @@ export default function Dashboard() {
           color={pendingNodes > 0 ? 'orange' : 'gray'}
         />
       </SimpleGrid>
+
+      <Paper withBorder p="md" radius="md" m="lg">
+        <Text size="md" c="dimmed" mb="xs">Node WebSocket Endpoint</Text>
+        <Group align="flex-end" wrap="nowrap">
+          <TextInput
+            value={status?.nodeEndpoint || ''}
+            readOnly
+            style={{ flex: 1 }}
+            description="Copy this endpoint into the Node ws.endpoint setting."
+          />
+          <CopyButton value={status?.nodeEndpoint || ''} timeout={1800}>
+            {({ copied, copy }) => (
+              <Button
+                variant={copied ? 'light' : 'default'}
+                color={copied ? 'green' : undefined}
+                leftSection={copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                disabled={!status?.nodeEndpoint}
+                onClick={copy}
+              >
+                {copied ? '已复制' : '复制'}
+              </Button>
+            )}
+          </CopyButton>
+        </Group>
+      </Paper>
     </div>
   );
 }

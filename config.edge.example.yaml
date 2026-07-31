@@ -1,0 +1,18 @@
+# Edge control-plane configuration
+port: 5283
+publicHost: ''
+# Use admin / viewPass for the control panel and management API.
+viewPass: change-me
+nodePath: /node/conn
+auth:
+  tokenFile: data/edge-nodes.json
+  requestTtl: 300000
+broker:
+  enabled: true
+  port: 1883
+  wsPort: 8083
+upstream:
+  enabled: false
+  # The Edge-to-Ejunz WebSocket endpoint. Nodes must point to this edge's nodePath.
+  endpoint: ''
+  token: ''

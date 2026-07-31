@@ -60,4 +60,5 @@ coverage/
 # Claude Code runtime (local only)
 .claude/
 
-!config.example.yaml
+!config.node.example.yaml
+!config.edge.example.yaml

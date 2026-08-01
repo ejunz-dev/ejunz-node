@@ -87,6 +87,8 @@ const edgeSchema = Schema.object({
     publicHost: Schema.string().default(''),
     viewPass: Schema.string().default(randomstring(8)),
     nodePath: Schema.string().default('/node/conn'),
+    // 逗号分隔的跨域来源 host 白名单（如 localhost:5174,localhost:5175），空为关闭 CORS
+    cors: Schema.string().default(''),
     broker: brokerSchema.default({ enabled: true, port: 1883, wsPort: 8083 }),
     auth: Schema.object({
         enabled: Schema.boolean().default(true),

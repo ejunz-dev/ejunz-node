@@ -12,6 +12,7 @@ export async function apply(pluginContext: Context) {
         port: config.port,
         keys: [randomstring(16)],
         enableSSE: true,
+        cors: (config as any).cors || '',
     } as any);
     pluginContext.inject(['server'], ({ server }) => {
         server.addServerLayer('stream', async (ctx, next) => {

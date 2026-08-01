@@ -180,10 +180,20 @@ class EdgeNodeDeviceControlHandler extends Handler<Context> {
             return;
         }
         const body = this.request.body || {};
+        const deviceId = String(body.deviceId || '');
+        const state = String(body.state || '').toUpperCase();
         try {
             this.response.body = await callNodeMcp(nodeId, 'zigbee_control_device', {
-                deviceId: String(body.deviceId || ''),
-                state: String(body.state || '').toUpperCase(),
+                deviceId,
+                state,
+            });
+            // Broadcast state change to WebSocket clients via registry
+            const channel = `node/${nodeId}/devices/${deviceId}/state`;
+            edgeRegistry.receive(nodeId, {
+                protocol: 'mqtt',
+                action: 'publish',
+                channel,
+                payload: { state },
             });
         } catch (e) {
             this.response.status = 502;

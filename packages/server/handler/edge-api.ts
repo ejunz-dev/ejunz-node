@@ -6,16 +6,10 @@ import { edgeRegistry } from '../edge/registry';
 import { maskEndpoint } from '../edge/protocol';
 import { getEdgeAuthConfig, requireEdgeAdmin as requireAdmin } from './edge-auth';
 
-function allowCors(handler: any) {
-    handler.response.addHeader('Access-Control-Allow-Origin', '*');
-    handler.response.addHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    handler.response.addHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-}
-
 class EdgeAuthConfigHandler extends Handler<Context> {
+    allowCors = true;
     async get() {
         if (!requireAdmin(this)) return;
-        allowCors(this);
         const auth = getEdgeAuthConfig();
         this.response.body = {
             enabled: auth.enabled,
@@ -26,7 +20,7 @@ class EdgeAuthConfigHandler extends Handler<Context> {
 
     async post() {
         if (!requireAdmin(this)) return;
-        allowCors(this);
+
         const body = this.request.body || {};
         const auth = (config as any).auth || ((config as any).auth = {});
         if (body.enabled !== undefined) auth.enabled = Boolean(body.enabled);
@@ -44,7 +38,7 @@ class EdgeAuthConfigHandler extends Handler<Context> {
 class EdgeStatusHandler extends Handler<Context> {
     async get() {
         if (!requireAdmin(this)) return;
-        allowCors(this);
+
         const upstream = (global as any).__edge_upstream;
         const headers = (this.request as any).headers || {};
         const forwardedProto = String(headers['x-forwarded-proto'] || 'http').split(',')[0].trim();
@@ -64,7 +58,7 @@ class EdgeStatusHandler extends Handler<Context> {
 class EdgeNodesHandler extends Handler<Context> {
     async get() {
         if (!requireAdmin(this)) return;
-        allowCors(this);
+
         this.response.body = { nodes: edgeRegistry.list() };
     }
 }
@@ -107,7 +101,7 @@ async function callNodeMcp(nodeId: string, name: string, args: any = {}) {
 class EdgeNodeToolsHandler extends Handler<Context> {
     async get() {
         if (!requireAdmin(this)) return;
-        allowCors(this);
+
         const nodeId = String((this.request as any).params?.nodeId || '');
         const node = edgeRegistry.get(nodeId);
         if (!node) {
@@ -122,7 +116,7 @@ class EdgeNodeToolsHandler extends Handler<Context> {
 class EdgeNodeDevicesHandler extends Handler<Context> {
     async get() {
         if (!requireAdmin(this)) return;
-        allowCors(this);
+
         const nodeId = String((this.request as any).params?.nodeId || '');
         if (!edgeRegistry.get(nodeId)) {
             this.response.status = 404;
@@ -175,9 +169,10 @@ class EdgeNodeDevicesHandler extends Handler<Context> {
 }
 
 class EdgeNodeDeviceControlHandler extends Handler<Context> {
+    allowCors = true;
     async post() {
         if (!requireAdmin(this)) return;
-        allowCors(this);
+
         const nodeId = String((this.request as any).params?.nodeId || '');
         if (!edgeRegistry.get(nodeId)) {
             this.response.status = 404;
@@ -198,9 +193,10 @@ class EdgeNodeDeviceControlHandler extends Handler<Context> {
 }
 
 class EdgeAuthorizeHandler extends Handler<Context> {
+    allowCors = true;
     async post() {
         if (!requireAdmin(this)) return;
-        allowCors(this);
+
         const nodeId = String((this.request as any).params?.nodeId || '');
         const node = edgeRegistry.get(nodeId);
         if (!node?.connection?.authorize) {
@@ -218,9 +214,10 @@ class EdgeAuthorizeHandler extends Handler<Context> {
 }
 
 class EdgeRevokeHandler extends Handler<Context> {
+    allowCors = true;
     async post() {
         if (!requireAdmin(this)) return;
-        allowCors(this);
+
         const nodeId = String((this.request as any).params?.nodeId || '');
         if (!edgeRegistry.get(nodeId)) {
             this.response.status = 404;
@@ -233,9 +230,10 @@ class EdgeRevokeHandler extends Handler<Context> {
 }
 
 class EdgeUpstreamHandler extends Handler<Context> {
+    allowCors = true;
     async get() {
         if (!requireAdmin(this)) return;
-        allowCors(this);
+
         const upstream = (global as any).__edge_upstream;
         const current = (config as any).upstream || {};
         this.response.body = {
@@ -247,7 +245,7 @@ class EdgeUpstreamHandler extends Handler<Context> {
 
     async post() {
         if (!requireAdmin(this)) return;
-        allowCors(this);
+
         const body = this.request.body || {};
         const upstream = (config as any).upstream || {};
         if (body.enabled !== undefined) upstream.enabled = Boolean(body.enabled);
@@ -262,9 +260,10 @@ class EdgeUpstreamHandler extends Handler<Context> {
 }
 
 class EdgeUpstreamRestartHandler extends Handler<Context> {
+    allowCors = true;
     async post() {
         if (!requireAdmin(this)) return;
-        allowCors(this);
+
         await (global as any).__edge_upstream?.restart?.();
         this.response.body = { ok: 1 };
     }

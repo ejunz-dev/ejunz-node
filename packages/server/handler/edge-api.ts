@@ -302,15 +302,15 @@ export function apply(ctx: Context) {
                 return;
             }
 
-            // Subscribe to MQTT device state changes and broadcast to this client
-            const aedes = (global as any).__ejunz_aedes;
-            const onPublish = (p: any) => {
-                if (!p?.topic?.startsWith('node/') || !p?.topic?.endsWith('/state')) return;
-                const msg = { type: 'device_state', topic: p.topic, payload: p.payload?.toString() || '' };
+            // Subscribe to device state changes via registry (node MQTT publishes)
+            const unsub = edgeRegistry.onEnvelope((record, envelope) => {
+                if (envelope.protocol !== 'mqtt' || envelope.action !== 'publish') return;
+                const match = String(envelope.channel || '').match(/^node\/[^/]+\/devices\/([^/]+)\/state$/);
+                if (!match) return;
+                const msg = { type: 'device_state', topic: envelope.channel, payload: envelope.payload || '' };
                 try { socket.send(JSON.stringify(msg)); } catch {}
-            };
-            aedes?.on?.('publish', onPublish);
-            socket.on('close', () => aedes?.removeListener?.('publish', onPublish));
+            });
+            socket.on('close', () => { try { unsub(); } catch {} });
         });
         if ((config as any).enableSSE !== false) {
             server.router.get('/api/edge/ws', (ctx) => {
@@ -325,13 +325,13 @@ export function apply(ctx: Context) {
                     'Connection': 'keep-alive',
                     'Access-Control-Allow-Origin': '*',
                 });
-                const aedes = (global as any).__ejunz_aedes;
-                const onPublish = (p: any) => {
-                    if (!p?.topic?.startsWith('node/') || !p?.topic?.endsWith('/state')) return;
-                    try { ctx.res.write(`data: ${JSON.stringify({ type: 'device_state', topic: p.topic, payload: p.payload?.toString() || '' })}\n\n`); } catch {}
-                };
-                aedes?.on?.('publish', onPublish);
-                ctx.req.on('close', () => aedes?.removeListener?.('publish', onPublish));
+                const unsub = edgeRegistry.onEnvelope((record, envelope) => {
+                    if (envelope.protocol !== 'mqtt' || envelope.action !== 'publish') return;
+                    const match = String(envelope.channel || '').match(/^node\/[^/]+\/devices\/([^/]+)\/state$/);
+                    if (!match) return;
+                    try { ctx.res.write(`data: ${JSON.stringify({ type: 'device_state', topic: envelope.channel, payload: envelope.payload || '' })}\n\n`); } catch {}
+                });
+                ctx.req.on('close', () => { try { unsub(); } catch {} });
             });
         }
     });

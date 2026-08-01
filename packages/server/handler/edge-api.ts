@@ -6,9 +6,16 @@ import { edgeRegistry } from '../edge/registry';
 import { maskEndpoint } from '../edge/protocol';
 import { getEdgeAuthConfig, requireEdgeAdmin as requireAdmin } from './edge-auth';
 
+function allowCors(handler: any) {
+    handler.response.addHeader('Access-Control-Allow-Origin', '*');
+    handler.response.addHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    handler.response.addHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+
 class EdgeAuthConfigHandler extends Handler<Context> {
     async get() {
         if (!requireAdmin(this)) return;
+        allowCors(this);
         const auth = getEdgeAuthConfig();
         this.response.body = {
             enabled: auth.enabled,
@@ -19,6 +26,7 @@ class EdgeAuthConfigHandler extends Handler<Context> {
 
     async post() {
         if (!requireAdmin(this)) return;
+        allowCors(this);
         const body = this.request.body || {};
         const auth = (config as any).auth || ((config as any).auth = {});
         if (body.enabled !== undefined) auth.enabled = Boolean(body.enabled);
@@ -36,6 +44,7 @@ class EdgeAuthConfigHandler extends Handler<Context> {
 class EdgeStatusHandler extends Handler<Context> {
     async get() {
         if (!requireAdmin(this)) return;
+        allowCors(this);
         const upstream = (global as any).__edge_upstream;
         const headers = (this.request as any).headers || {};
         const forwardedProto = String(headers['x-forwarded-proto'] || 'http').split(',')[0].trim();
@@ -55,6 +64,7 @@ class EdgeStatusHandler extends Handler<Context> {
 class EdgeNodesHandler extends Handler<Context> {
     async get() {
         if (!requireAdmin(this)) return;
+        allowCors(this);
         this.response.body = { nodes: edgeRegistry.list() };
     }
 }
@@ -97,6 +107,7 @@ async function callNodeMcp(nodeId: string, name: string, args: any = {}) {
 class EdgeNodeToolsHandler extends Handler<Context> {
     async get() {
         if (!requireAdmin(this)) return;
+        allowCors(this);
         const nodeId = String((this.request as any).params?.nodeId || '');
         const node = edgeRegistry.get(nodeId);
         if (!node) {
@@ -111,6 +122,7 @@ class EdgeNodeToolsHandler extends Handler<Context> {
 class EdgeNodeDevicesHandler extends Handler<Context> {
     async get() {
         if (!requireAdmin(this)) return;
+        allowCors(this);
         const nodeId = String((this.request as any).params?.nodeId || '');
         if (!edgeRegistry.get(nodeId)) {
             this.response.status = 404;
@@ -165,6 +177,7 @@ class EdgeNodeDevicesHandler extends Handler<Context> {
 class EdgeNodeDeviceControlHandler extends Handler<Context> {
     async post() {
         if (!requireAdmin(this)) return;
+        allowCors(this);
         const nodeId = String((this.request as any).params?.nodeId || '');
         if (!edgeRegistry.get(nodeId)) {
             this.response.status = 404;
@@ -187,6 +200,7 @@ class EdgeNodeDeviceControlHandler extends Handler<Context> {
 class EdgeAuthorizeHandler extends Handler<Context> {
     async post() {
         if (!requireAdmin(this)) return;
+        allowCors(this);
         const nodeId = String((this.request as any).params?.nodeId || '');
         const node = edgeRegistry.get(nodeId);
         if (!node?.connection?.authorize) {
@@ -206,6 +220,7 @@ class EdgeAuthorizeHandler extends Handler<Context> {
 class EdgeRevokeHandler extends Handler<Context> {
     async post() {
         if (!requireAdmin(this)) return;
+        allowCors(this);
         const nodeId = String((this.request as any).params?.nodeId || '');
         if (!edgeRegistry.get(nodeId)) {
             this.response.status = 404;
@@ -220,6 +235,7 @@ class EdgeRevokeHandler extends Handler<Context> {
 class EdgeUpstreamHandler extends Handler<Context> {
     async get() {
         if (!requireAdmin(this)) return;
+        allowCors(this);
         const upstream = (global as any).__edge_upstream;
         const current = (config as any).upstream || {};
         this.response.body = {
@@ -231,6 +247,7 @@ class EdgeUpstreamHandler extends Handler<Context> {
 
     async post() {
         if (!requireAdmin(this)) return;
+        allowCors(this);
         const body = this.request.body || {};
         const upstream = (config as any).upstream || {};
         if (body.enabled !== undefined) upstream.enabled = Boolean(body.enabled);
@@ -247,6 +264,7 @@ class EdgeUpstreamHandler extends Handler<Context> {
 class EdgeUpstreamRestartHandler extends Handler<Context> {
     async post() {
         if (!requireAdmin(this)) return;
+        allowCors(this);
         await (global as any).__edge_upstream?.restart?.();
         this.response.body = { ok: 1 };
     }
@@ -264,4 +282,57 @@ export function apply(ctx: Context) {
     ctx.Route('edge-revoke', '/api/edge/nodes/:nodeId/revoke', EdgeRevokeHandler);
     ctx.Route('edge-upstream', '/api/edge/upstream', EdgeUpstreamHandler);
     ctx.Route('edge-upstream-restart', '/api/edge/upstream/restart', EdgeUpstreamRestartHandler);
+
+    // WebSocket endpoint for real-time device state updates (inject server to access router)
+    ctx.inject(['server'], ({ server }) => {
+        const wsLayer = server.router.ws('/api/edge/ws', (socket, req) => {
+            // Authenticate: check Basic Auth header or token query param
+            const authHeader = req.headers['authorization'] || '';
+            const token = (new URL(req.url || '', `http://${req.headers.host}`).searchParams.get('token') || '');
+            const auth = (config as any).auth || {};
+            let authed = !auth.enabled;
+            if (!authed && authHeader.startsWith('Basic ')) {
+                const decoded = Buffer.from(authHeader.slice(6), 'base64').toString();
+                const [uname, pass] = decoded.split(':');
+                authed = uname === auth.username && pass === auth.password;
+            }
+            if (!authed && token && token === auth.password) authed = true;
+            if (!authed) {
+                socket.close(4001, 'auth required');
+                return;
+            }
+
+            // Subscribe to MQTT device state changes and broadcast to this client
+            const aedes = (global as any).__ejunz_aedes;
+            const onPublish = (p: any) => {
+                if (!p?.topic?.startsWith('node/') || !p?.topic?.endsWith('/state')) return;
+                const msg = { type: 'device_state', topic: p.topic, payload: p.payload?.toString() || '' };
+                try { socket.send(JSON.stringify(msg)); } catch {}
+            };
+            aedes?.on?.('publish', onPublish);
+            socket.on('close', () => aedes?.removeListener?.('publish', onPublish));
+        });
+        if ((config as any).enableSSE !== false) {
+            server.router.get('/api/edge/ws', (ctx) => {
+                ctx.set('Content-Type', 'text/event-stream');
+                ctx.set('Cache-Control', 'no-cache');
+                ctx.set('Connection', 'keep-alive');
+                ctx.set('Access-Control-Allow-Origin', '*');
+                ctx.status = 200;
+                ctx.res.writeHead(200, {
+                    'Content-Type': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'Access-Control-Allow-Origin': '*',
+                });
+                const aedes = (global as any).__ejunz_aedes;
+                const onPublish = (p: any) => {
+                    if (!p?.topic?.startsWith('node/') || !p?.topic?.endsWith('/state')) return;
+                    try { ctx.res.write(`data: ${JSON.stringify({ type: 'device_state', topic: p.topic, payload: p.payload?.toString() || '' })}\n\n`); } catch {}
+                };
+                aedes?.on?.('publish', onPublish);
+                ctx.req.on('close', () => aedes?.removeListener?.('publish', onPublish));
+            });
+        }
+    });
 }

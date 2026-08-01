@@ -314,8 +314,8 @@ export function apply(ctx: Context) {
                     unsub();
                     resolve({ deviceId: match[2], state: envelope.payload });
                 });
-                // Also clean up on request close
-                this.request.res.on('close', () => { clearTimeout(timer); unsub(); resolve({ timeout: true }); });
+                // Clean up on request close (res may be undefined in some frameworks)
+                try { this.request.res?.on?.('close', () => { clearTimeout(timer); unsub(); resolve({ timeout: true }); }); } catch {}
             });
             this.response.body = result;
         }

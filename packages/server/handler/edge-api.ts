@@ -292,6 +292,35 @@ export function apply(ctx: Context) {
     ctx.Route('edge-upstream', '/api/edge/upstream', EdgeUpstreamHandler);
     ctx.Route('edge-upstream-restart', '/api/edge/upstream/restart', EdgeUpstreamRestartHandler);
 
+    // Long-polling endpoint for real-time device state updates (works where WebSocket is blocked)
+    ctx.Route('edge-poll', '/api/edge/poll', class extends Handler<Context> {
+        allowCors = true;
+        async get() {
+            if (!requireAdmin(this)) return;
+            const nodeId = String(this.request.query.nodeId || '');
+            if (!nodeId || !edgeRegistry.get(nodeId)) {
+                this.response.body = { error: 'node not found' };
+                this.response.status = 404;
+                return;
+            }
+            // Wait for next device state change (up to 30s)
+            const result = await new Promise<any>((resolve) => {
+                const timer = setTimeout(() => resolve({ timeout: true }), 30000);
+                const unsub = edgeRegistry.onEnvelope((record, envelope) => {
+                    if (envelope.protocol !== 'mqtt' || envelope.action !== 'publish') return;
+                    const match = String(envelope.channel || '').match(/^node\/([^/]+)\/devices\/([^/]+)\/state$/);
+                    if (!match || match[1] !== nodeId) return;
+                    clearTimeout(timer);
+                    unsub();
+                    resolve({ deviceId: match[2], state: envelope.payload });
+                });
+                // Also clean up on request close
+                this.request.res.on('close', () => { clearTimeout(timer); unsub(); resolve({ timeout: true }); });
+            });
+            this.response.body = result;
+        }
+    });
+
     // WebSocket endpoint for real-time device state updates (inject server to access router)
     ctx.inject(['server'], ({ server }) => {
         const wsLayer = server.router.ws('/api/edge/ws', (socket, req) => {

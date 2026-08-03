@@ -68,11 +68,13 @@ const nodeSchema = Schema.object({
         baseTopic: Schema.string().default('zigbee2mqtt'),
         autoStart: Schema.boolean().default(true),
         adapter: Schema.string().default('/dev/ttyUSB0'),
+        adapterType: Schema.string().default('ember'),
     }).default({
         enabled: true,
         baseTopic: 'zigbee2mqtt',
         autoStart: true,
         adapter: '/dev/ttyUSB0',
+        adapterType: 'ember',
     }),
     ws: Schema.object({
         endpoint: Schema.string().default(''),

@@ -54,6 +54,9 @@ coverage/
 .env.local
 .env.*.local
 
+# Local deploy / autostart helpers
+deploy/
+
 # OMC runtime (local only)
 .omc/
 

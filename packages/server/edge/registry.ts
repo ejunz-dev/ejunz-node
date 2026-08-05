@@ -20,6 +20,7 @@ export type EdgeNodeRecord = {
     requestExpiresAt?: number;
     metadata?: Record<string, any>;
     deviceStates?: Record<string, any>;
+    deviceStateUpdatedAt?: Record<string, number>;
     connection?: any;
 };
 
@@ -75,11 +76,13 @@ class EdgeRegistry {
             tools: [],
             lastSeen: Date.now(),
             deviceStates: {},
+            deviceStateUpdatedAt: {},
             ...existing,
             ...metadata,
             nodeId: id,
         };
         record.deviceStates ||= {};
+        record.deviceStateUpdatedAt ||= {};
         this.nodes.set(id, record);
         return record;
     }
@@ -96,6 +99,40 @@ class EdgeRegistry {
     get(nodeId: string) {
         this.init();
         return this.nodes.get(String(nodeId));
+    }
+
+    /** Return a JSON-safe view without credentials or live connection objects. */
+    snapshot(options: { nodeIds?: string[]; deviceIds?: string[] } = {}) {
+        this.init();
+        const nodeFilter = options.nodeIds?.length ? new Set(options.nodeIds.map(String)) : undefined;
+        const deviceFilter = options.deviceIds?.length ? new Set(options.deviceIds.map(String)) : undefined;
+        const clone = (value: any) => {
+            try { return JSON.parse(JSON.stringify(value)); } catch { return {}; }
+        };
+        const nodes = Array.from(this.nodes.values())
+            .filter((record) => !nodeFilter || nodeFilter.has(record.nodeId))
+            .map((record) => {
+                const deviceStates = Object.fromEntries(Object.entries(record.deviceStates || {})
+                    .filter(([deviceId]) => !deviceFilter || deviceFilter.has(deviceId))
+                    .map(([deviceId, state]) => [deviceId, clone(state)]));
+                const deviceStateUpdatedAt = Object.fromEntries(Object.entries(record.deviceStateUpdatedAt || {})
+                    .filter(([deviceId]) => deviceStates[deviceId] !== undefined));
+                return {
+                    nodeId: record.nodeId,
+                    host: record.host,
+                    port: record.port,
+                    status: record.status,
+                    connected: Boolean(record.connection),
+                    tools: clone(record.tools || []),
+                    lastSeen: record.lastSeen,
+                    authorizedAt: record.authorizedAt,
+                    revokedAt: record.revokedAt,
+                    metadata: clone(record.metadata || {}),
+                    deviceStates,
+                    deviceStateUpdatedAt,
+                };
+            });
+        return { generatedAt: Date.now(), nodes };
     }
 
     requestAuthorization(nodeId: string, metadata: Partial<EdgeNodeRecord>, connection: any) {
@@ -215,12 +252,15 @@ class EdgeRegistry {
     }
 
     receive(nodeId: string, envelope: EdgeEnvelope) {
-        const record = this.node(nodeId, { lastSeen: Date.now() });
+        const now = Date.now();
+        const record = this.node(nodeId, { lastSeen: now });
         if (envelope.protocol === 'mqtt' && envelope.action === 'publish') {
             const match = String(envelope.channel || '').match(/^node\/[^/]+\/devices\/([^/]+)\/state$/);
             if (match) {
                 record.deviceStates ||= {};
+                record.deviceStateUpdatedAt ||= {};
                 record.deviceStates[match[1]] = envelope.payload || {};
+                record.deviceStateUpdatedAt[match[1]] = now;
                 this.persist();
             }
         }

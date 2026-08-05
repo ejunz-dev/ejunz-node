@@ -4,7 +4,9 @@ import { Context } from 'cordis';
 import { config, isEdgeMode, saveConfig } from '../config';
 import { edgeRegistry } from '../edge/registry';
 import { maskEndpoint } from '../edge/protocol';
-import { getEdgeAuthConfig, requireEdgeAdmin as requireAdmin } from './edge-auth';
+import { callNodeMcp, controlEdgeDevice } from '../edge/device-control';
+import { EDGE_WS_MAX_MESSAGE_BYTES, parseEdgeWsMessage, protocolMessage } from '../edge/ws-protocol';
+import { getEdgeAuthConfig, isEdgeAdminAuthorized, requireEdgeAdmin as requireAdmin } from './edge-auth';
 
 class EdgeAuthConfigHandler extends Handler<Context> {
     allowCors = true;
@@ -83,19 +85,6 @@ function getCurrentDeviceState(node: any, deviceId: string) {
         if (baseState?.state === 'ON' || baseState?.state === 'OFF') return baseState.state;
     }
     return undefined;
-}
-
-async function callNodeMcp(nodeId: string, name: string, args: any = {}) {
-    return edgeRegistry.request(nodeId, {
-        protocol: 'mcp',
-        action: 'jsonrpc',
-        payload: {
-            jsonrpc: '2.0',
-            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-            method: 'tools/call',
-            params: { name, arguments: args },
-        },
-    });
 }
 
 class EdgeNodeToolsHandler extends Handler<Context> {
@@ -183,18 +172,7 @@ class EdgeNodeDeviceControlHandler extends Handler<Context> {
         const deviceId = String(body.deviceId || '');
         const state = String(body.state || '').toUpperCase();
         try {
-            this.response.body = await callNodeMcp(nodeId, 'zigbee_control_device', {
-                deviceId,
-                state,
-            });
-            // Broadcast state change to WebSocket clients via registry
-            const channel = `node/${nodeId}/devices/${deviceId}/state`;
-            edgeRegistry.receive(nodeId, {
-                protocol: 'mqtt',
-                action: 'publish',
-                channel,
-                payload: { state },
-            });
+            this.response.body = await controlEdgeDevice(nodeId, deviceId, state);
         } catch (e) {
             this.response.status = 502;
             this.response.body = { error: (e as Error).message };
@@ -323,35 +301,140 @@ export function apply(ctx: Context) {
 
     // WebSocket endpoint for real-time device state updates (inject server to access router)
     ctx.inject(['server'], ({ server }) => {
-        const wsLayer = server.router.ws('/api/edge/ws', (socket, req) => {
-            // Authenticate: check Basic Auth header or token query param
-            const authHeader = req.headers['authorization'] || '';
-            const token = (new URL(req.url || '', `http://${req.headers.host}`).searchParams.get('token') || '');
-            const auth = (config as any).auth || {};
-            let authed = !auth.enabled;
-            if (!authed && authHeader.startsWith('Basic ')) {
-                const decoded = Buffer.from(authHeader.slice(6), 'base64').toString();
-                const [uname, pass] = decoded.split(':');
-                authed = uname === auth.username && pass === auth.password;
-            }
-            if (!authed && token && token === auth.password) authed = true;
-            if (!authed) {
-                socket.close(4001, 'auth required');
+        server.router.ws('/api/edge/ws', (socket, req) => {
+            if (!isEdgeAdminAuthorized(req)) {
+                try { socket.close(4001, 'auth required'); } catch {}
                 return;
             }
 
-            // Subscribe to device state changes via registry (node MQTT publishes)
+            let protocolMode = false;
+            let closed = false;
+            let lastActivity = Date.now();
+            let nodeIds: string[] | undefined;
+            let deviceIds: string[] | undefined;
+            let topics: string[] | undefined;
+
+            const send = (message: any) => {
+                if (closed || socket.readyState !== undefined && socket.readyState !== 1) return false;
+                try {
+                    const payload = JSON.stringify(message);
+                    if (Buffer.byteLength(payload, 'utf8') > EDGE_WS_MAX_MESSAGE_BYTES) return false;
+                    socket.send(payload);
+                    return true;
+                } catch { return false; }
+            };
+            const sendError = (code: string, message: string, requestId?: string) =>
+                send(protocolMessage('error', { code, message, ...(requestId ? { requestId } : {}) }));
+            const matches = (nodeId: string, deviceId: string, topic: string) => {
+                if (nodeIds?.length && !nodeIds.includes(nodeId)) return false;
+                if (deviceIds?.length && !deviceIds.includes(deviceId)) return false;
+                if (topics?.length && !topics.includes(topic)) return false;
+                return true;
+            };
+            const sendSnapshot = (requestId?: string, requestedNodeIds?: string[], requestedDeviceIds?: string[]) => {
+                const snapshot = edgeRegistry.snapshot({
+                    nodeIds: requestedNodeIds?.length ? requestedNodeIds : nodeIds,
+                    deviceIds: requestedDeviceIds?.length ? requestedDeviceIds : deviceIds,
+                });
+                send(protocolMessage('device_snapshot', { requestId, ...snapshot }));
+            };
+
+            send(protocolMessage('hello', {
+                heartbeatIntervalMs: 30000,
+                snapshot: true,
+                subscriptions: true,
+                control: true,
+                serverTime: Date.now(),
+            }));
+
             const unsub = edgeRegistry.onEnvelope((record, envelope) => {
                 if (envelope.protocol !== 'mqtt' || envelope.action !== 'publish') return;
-                const match = String(envelope.channel || '').match(/^node\/[^/]+\/devices\/([^/]+)\/state$/);
-                if (!match) return;
-                const msg = { type: 'device_state', topic: envelope.channel, payload: envelope.payload || '' };
-                try { socket.send(JSON.stringify(msg)); } catch {}
+                const match = String(envelope.channel || '').match(/^node\/([^/]+)\/devices\/([^/]+)\/state$/);
+                if (!match || !matches(match[1], match[2], String(envelope.channel))) return;
+                if (protocolMode) {
+                    send(protocolMessage('device_state', {
+                        nodeId: match[1], deviceId: match[2], topic: envelope.channel,
+                        payload: envelope.payload || '',
+                        updatedAt: record.deviceStateUpdatedAt?.[match[2]] || Date.now(),
+                    }));
+                } else {
+                    send({ type: 'device_state', topic: envelope.channel, payload: envelope.payload || '' });
+                }
             });
-            socket.on('close', () => { try { unsub(); } catch {} });
+
+            const heartbeat = setInterval(() => {
+                if (closed) return;
+                try { socket.ping?.(); } catch {}
+                if (protocolMode) send(protocolMessage('ping', { timestamp: Date.now() }));
+                if (Date.now() - lastActivity > 120000) {
+                    try { socket.close(4000, 'heartbeat timeout'); } catch {}
+                }
+            }, 30000);
+
+            const handleMessage = (data: any) => {
+                lastActivity = Date.now();
+                const parsed = parseEdgeWsMessage(data);
+                if (!parsed.ok) {
+                    sendError(parsed.code, parsed.message);
+                    if (parsed.code === 'message_too_large') try { socket.close(1009, parsed.message); } catch {}
+                    return;
+                }
+                protocolMode = true;
+                const message = parsed.message;
+                try {
+                    switch (message.type) {
+                        case 'hello':
+                            send(protocolMessage('hello_ack', { requestId: message.requestId, serverTime: Date.now() }));
+                            break;
+                        case 'subscribe':
+                            nodeIds = message.nodeIds;
+                            deviceIds = message.deviceIds;
+                            topics = message.topics;
+                            send(protocolMessage('subscribed', { requestId: message.requestId, nodeIds, deviceIds, topics }));
+                            break;
+                        case 'snapshot_request':
+                            sendSnapshot(message.requestId, message.nodeIds, message.deviceIds);
+                            break;
+                        case 'control':
+                            if ((!nodeIds?.length || nodeIds.includes(message.nodeId))
+                                && (!deviceIds?.length || deviceIds.includes(message.deviceId))) {
+                                controlEdgeDevice(message.nodeId, message.deviceId, message.state)
+                                    .then((result) => send(protocolMessage('control_result', { requestId: message.requestId, ok: true, nodeId: message.nodeId, deviceId: message.deviceId, state: message.state, result })))
+                                    .catch((error) => send(protocolMessage('control_result', { requestId: message.requestId, ok: false, nodeId: message.nodeId, deviceId: message.deviceId, error: (error as Error).message })));
+                            } else {
+                                sendError('control_not_subscribed', 'target is not included in the current subscription', message.requestId);
+                            }
+                            break;
+                        case 'ping':
+                            send(protocolMessage('pong', { requestId: message.requestId, timestamp: message.timestamp ?? Date.now(), serverTime: Date.now() }));
+                            break;
+                    }
+                } catch (error) {
+                    sendError('request_failed', (error as Error).message, (message as any).requestId);
+                }
+            };
+
+            socket.on('message', handleMessage);
+            socket.on('pong', () => { lastActivity = Date.now(); });
+            socket.on('close', () => {
+                closed = true;
+                clearInterval(heartbeat);
+                try { unsub(); } catch {}
+            });
+            socket.on('error', () => {
+                closed = true;
+                clearInterval(heartbeat);
+                try { unsub(); } catch {}
+            });
         });
         if ((config as any).enableSSE !== false) {
             server.router.get('/api/edge/ws', (ctx) => {
+                if (!isEdgeAdminAuthorized(ctx.request)) {
+                    ctx.status = 401;
+                    ctx.set('WWW-Authenticate', 'Basic realm="Ejunz Edge"');
+                    ctx.body = { error: 'edge admin authentication required' };
+                    return;
+                }
                 ctx.set('Content-Type', 'text/event-stream');
                 ctx.set('Cache-Control', 'no-cache');
                 ctx.set('Connection', 'keep-alive');

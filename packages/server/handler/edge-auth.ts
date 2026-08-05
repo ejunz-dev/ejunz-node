@@ -10,11 +10,29 @@ export function getEdgeAuthConfig() {
     };
 }
 
+function requestQuery(request: any) {
+    if (request?.query) return request.query;
+    try {
+        return Object.fromEntries(new URL(String(request?.url || ''), 'http://localhost').searchParams.entries());
+    } catch {
+        return {};
+    }
+}
+
+function bearerToken(request: any) {
+    const headers = request?.headers || {};
+    const authorization = String(headers.authorization || '');
+    if (authorization.startsWith('Bearer ')) return authorization.slice(7).trim();
+    return String(headers['x-edge-token'] || headers['x-api-token'] || '').trim();
+}
+
+/** Shared auth check for HTTP handlers and raw WebSocket upgrade requests. */
 export function isEdgeAdminAuthorized(request: any) {
     const authConfig = getEdgeAuthConfig();
     if (!authConfig.enabled) return true;
 
-    const authorization = request?.headers?.authorization || '';
+    const headers = request?.headers || {};
+    const authorization = String(headers.authorization || '');
     if (authorization.startsWith('Basic ')) {
         try {
             const decoded = Buffer.from(authorization.slice(6), 'base64').toString();
@@ -25,7 +43,9 @@ export function isEdgeAdminAuthorized(request: any) {
         } catch {}
     }
 
-    return String(request?.query?.token || '') === authConfig.password;
+    const query = requestQuery(request);
+    const token = String(query.token || query.access_token || bearerToken(request) || '');
+    return Boolean(token) && token === authConfig.password;
 }
 
 export function requireEdgeAdmin(handler: any) {

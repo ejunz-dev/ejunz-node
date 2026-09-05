@@ -73,10 +73,3 @@ file is copied automatically:
 |------|----------------|
 | 5283 | Edge control panel, `/api/edge/*` API, Node WebSocket endpoint |
 | 5284 | Node (Zigbee2MQTT + local MQTT broker)                         |
-
-## Related
-
-- [ejunz-node_client](https://github.com/ejunz-dev/ejunz-node_client) – multi-platform Edge client
-- [ejunz-mfs](https://github.com/ejunz-dev/ejunz-mfs) – Microsoft Flight Simulator 2024 overlay
-- [ejunz-projection](https://github.com/ejunz-dev/ejunz-projection) – CS2 GSI projection overlay
-- [Ejunz](https://github.com/ejunz-dev/Ejunz) – knowledge management & learning platform

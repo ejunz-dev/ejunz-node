@@ -1044,9 +1044,9 @@ export function buildDynamicToolEntries(devices: any[], nodeId: string): NodeToo
                         inputSchema: parameters,
                         metadata,
                     },
-                    handler: async (args: any) => {
+                    handler: async (ctx: Context, args: any) => {
                         logger.info('[%s] 调用工具: %o', toolName, args);
-                        const { state } = args;
+                        const { state } = args || {};
                         if (!state) throw new Error('缺少必要参数：state');
                         if (!actions.includes(state)) {
                             throw new Error(`state 必须是 ${actions.join(', ')} 之一`);

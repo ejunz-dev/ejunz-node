@@ -38,7 +38,7 @@ function applyNode(ctx: Context) {
         c.plugin(require('./handler/node-mcp-config'));
         c.server.listen();
     });
-    ctx.plugin(require('./client/node'));
+    ctx.plugin(require('./service/node-client'));
 }
 
 function applyEdge(ctx: Context) {

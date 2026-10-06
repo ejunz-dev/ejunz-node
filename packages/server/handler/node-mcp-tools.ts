@@ -1,7 +1,7 @@
 import { Context } from 'cordis';
 import { Handler } from '@ejunz/framework';
 import { Logger } from '../utils';
-import { listNodeTools, setDynamicNodeTools, getNodeToolEntry } from '../mcp-tools/node';
+import { listNodeTools, setDynamicNodeTools, getNodeToolEntry } from '../tools/node';
 
 const logger = new Logger('handler/node-mcp-tools');
 
@@ -49,7 +49,7 @@ class NodeMCPToolsRegisterHandler extends Handler<Context> {
             logger.info('找到 %d 个设备', devices.length);
             
             // 使用与 node.ts 相同的逻辑生成工具
-            const { buildDynamicToolEntries, resolveNodeId } = require('../client/node');
+            const { buildDynamicToolEntries, resolveNodeId } = require('../service/node-client');
             const nodeId = resolveNodeId();
             
             // 生成工具（使用与自动注册相同的逻辑）

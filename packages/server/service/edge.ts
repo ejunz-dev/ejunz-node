@@ -2,8 +2,8 @@
 import { Service } from 'cordis';
 import { Logger } from '@ejunz/utils';
 import { config, isEdgeMode } from '../config';
-import { edgeRegistry } from '../edge/registry';
-import { EdgeEnvelope, endpointWithToken, maskEndpoint, prepareEnvelope } from '../edge/protocol';
+import { edgeRegistry } from '../model/edge-registry';
+import { EdgeEnvelope, endpointWithToken, maskEndpoint, prepareEnvelope } from '@ejunz/protocol';
 
 const logger = new Logger('edge');
 

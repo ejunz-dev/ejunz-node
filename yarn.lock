@@ -177,9 +177,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ejunz/edge-ui@workspace:packages/server/edge/ui":
+"@ejunz/edge-ui@workspace:packages/ui/edge":
   version: 0.0.0-use.local
-  resolution: "@ejunz/edge-ui@workspace:packages/server/edge/ui"
+  resolution: "@ejunz/edge-ui@workspace:packages/ui/edge"
   dependencies:
     "@ejunz/register": "npm:^0.3.2"
     "@mantine/core": "npm:^8.2.4"
@@ -222,9 +222,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ejunz/node-ui@workspace:packages/server/node/ui":
+"@ejunz/node-ui@workspace:packages/ui/node":
   version: 0.0.0-use.local
-  resolution: "@ejunz/node-ui@workspace:packages/server/node/ui"
+  resolution: "@ejunz/node-ui@workspace:packages/ui/node"
   dependencies:
     "@ejunz/register": "npm:^0.3.2"
     "@ejunz/utils": "npm:^0.4.1"
@@ -262,6 +262,7 @@ __metadata:
     "@cordisjs/plugin-logger": "npm:^1.0.1"
     "@cordisjs/plugin-timer": "npm:^1.1.1"
     "@ejunz/framework": "npm:0.4.4"
+    "@ejunz/protocol": "workspace:*"
     "@ejunz/utils": "npm:^0.4.1"
     "@types/fs-extra": "npm:^11.0.4"
     "@types/js-yaml": "npm:^4.0.9"
@@ -275,6 +276,12 @@ __metadata:
     schemastery: "npm:^3.16.1"
     ws: "npm:^8.18.3"
     zigbee2mqtt: "npm:^2.6.3"
+  languageName: unknown
+  linkType: soft
+
+"@ejunz/protocol@workspace:*, @ejunz/protocol@workspace:packages/protocol":
+  version: 0.0.0-use.local
+  resolution: "@ejunz/protocol@workspace:packages/protocol"
   languageName: unknown
   linkType: soft
 

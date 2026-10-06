@@ -2,6 +2,9 @@
 import { Context } from 'cordis';
 import { Handler } from '@ejunz/framework';
 import Zigbee2MqttService from '../service/zigbee2mqtt';
+import { Logger } from '../utils';
+
+const logger = new Logger('handler/zigbee2mqtt');
 
 class Z2MStatusHandler extends Handler<Context> {
     noCheckPermView = true;
@@ -125,9 +128,9 @@ class Z2MControlHandler extends Handler<Context> {
                         delete controlCommand.state;
                     }
                     
-                    console.debug('[z2m-control] 端点控制: 设备=%s, 端点=%s, 原始命令=%o, 转换后命令=%o', targetDeviceId, endpoint, body, controlCommand);
+                    logger.debug('[z2m-control] 端点控制: 设备=%s, 端点=%s, 原始命令=%o, 转换后命令=%o', targetDeviceId, endpoint, body, controlCommand);
                 } else {
-                    console.debug('[z2m-control] 普通控制: deviceId=%s body=%o', id, body);
+                    logger.debug('[z2m-control] 普通控制: deviceId=%s body=%o', id, body);
                 }
                 
                 await svc.setDeviceState(targetDeviceId, controlCommand);
@@ -271,7 +274,7 @@ export async function apply(ctx: Context) {
             
             try {
                 // 调用 Node 端的工具
-                const { callNodeTool } = require('../mcp-tools/node');
+                const { callNodeTool } = require('../tools/node');
                 const result = await callNodeTool(this.ctx, { name: toolName, arguments: args || {} });
                 this.response.body = { result };
             } catch (e) {

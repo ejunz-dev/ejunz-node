@@ -4,6 +4,7 @@ import { Context } from 'cordis';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { config, saveConfig } from '../config';
+import { resolveUiAssetPath } from '../../ui';
 import MqttBridgeService from '../service/mqtt-bridge';
 
 // 获取配置Schema信息（声明的配置）
@@ -148,7 +149,7 @@ class ConfigStatusHandler extends Handler<Context> {
 class MqttBridgeConfigPage extends Handler<Context> {
     noCheckPermView = true;
     async get() {
-        const htmlPath = path.join(__dirname, '../node/mqtt-bridge-config.html');
+        const htmlPath = resolveUiAssetPath(__dirname, 'ui/node/templates/mqtt-bridge-config.html', '../../ui/node/templates/mqtt-bridge-config.html');
         if (fs.existsSync(htmlPath)) {
             this.response.type = 'text/html; charset=utf-8';
             this.response.addHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');

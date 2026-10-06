@@ -1,7 +1,7 @@
 import { Context } from 'cordis';
 import { Handler, ConnectionHandler } from '@ejunz/framework';
-import { listNodeTools } from '../mcp-tools/node';
-import { callNodeTool } from '../mcp-tools/node';
+import { listNodeTools } from '../tools/node';
+import { callNodeTool } from '../tools/node';
 import { config } from '../config';
 import { Logger } from '../utils';
 

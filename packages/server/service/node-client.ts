@@ -4,9 +4,9 @@ import os from 'node:os';
 import { Context } from 'cordis';
 import { Logger } from '@ejunz/utils';
 import { config, saveConfig } from '../config';
-import { endpointWithToken } from '../edge/protocol';
-import { listNodeTools, setDynamicNodeTools, NodeToolRegistryEntry, NodeToolDefinition, callNodeTool } from '../mcp-tools/node';
-import { callZigbeeControlTool } from '../mcp-tools/nodeZigbee';
+import { endpointWithToken } from '@ejunz/protocol';
+import { listNodeTools, setDynamicNodeTools, NodeToolRegistryEntry, NodeToolDefinition, callNodeTool } from '../tools/node';
+import { callZigbeeControlTool } from '../tools/nodeZigbee';
 
 const logger = new Logger('node-client');
 

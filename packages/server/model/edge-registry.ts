@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { config } from '../config';
 import { fs } from '../utils';
-import { EdgeEnvelope, generateTraceId, hashToken, safeTokenEqual } from './protocol';
+import { EdgeEnvelope, generateTraceId, hashToken, safeTokenEqual } from '@ejunz/protocol';
 
 export type EdgeNodeStatus = 'pending' | 'online' | 'offline' | 'revoked';
 

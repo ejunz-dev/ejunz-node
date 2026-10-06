@@ -1,11 +1,12 @@
 // @ts-nocheck
 import { Handler } from '@ejunz/framework';
 import { Context } from 'cordis';
-import path from 'node:path';
 import { isEdgeMode } from '../config';
-import { fs, randomstring } from '../utils';
+import { fs, Logger, randomstring } from '../utils';
+import { createUiPage, createUiScriptPath, readUiBundle, resolveUiAssetPath } from '../../ui';
 import { isEdgeAdminAuthorized } from './edge-auth';
 
+const logger = new Logger('handler/edge-ui');
 const randomHash = randomstring(8).toLowerCase();
 
 class EdgeUIHomeHandler extends Handler<Context> {
@@ -16,10 +17,10 @@ class EdgeUIHomeHandler extends Handler<Context> {
             this.response.body = 'Authentication required';
             return;
         }
-        const bundlePath = path.resolve(__dirname, '../data/static.edge-ui');
-        const scriptPath = `/edge-ui/main.js${fs.existsSync(bundlePath) ? `?${randomHash}` : ''}`;
+        const bundlePath = resolveUiAssetPath(__dirname, 'data/static.edge-ui', '../../data/static.edge-ui');
+        const scriptPath = createUiScriptPath('/edge-ui/main.js', fs.existsSync(bundlePath), randomHash);
         this.response.type = 'text/html';
-        this.response.body = `<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ejunz Edge</title></head><body><div id="root"></div><script src="${scriptPath}"></script></body></html>`;
+        this.response.body = createUiPage({ title: 'Ejunz Edge', scriptPath });
     }
 }
 
@@ -31,10 +32,19 @@ class EdgeUIStaticHandler extends Handler<Context> {
             this.response.body = 'Authentication required';
             return;
         }
-        const bundlePath = path.resolve(__dirname, '../data/static.edge-ui');
+        const bundlePath = resolveUiAssetPath(__dirname, 'data/static.edge-ui', '../../data/static.edge-ui');
         this.response.type = 'text/javascript';
-        if (fs.existsSync(bundlePath)) this.response.body = fs.readFileSync(bundlePath, 'utf8');
-        else this.response.body = 'console.error("Edge UI bundle not found. Run yarn build:ui.")';
+        if (!fs.existsSync(bundlePath)) {
+            logger.warn('Edge UI bundle not found. Run yarn build:ui.');
+            this.response.body = '';
+            return;
+        }
+        try {
+            this.response.body = readUiBundle(bundlePath, '');
+        } catch (error) {
+            logger.error('Failed to load Edge UI bundle: %s', (error as Error).message);
+            this.response.body = '';
+        }
     }
 }
 

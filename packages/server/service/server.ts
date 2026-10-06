@@ -4,6 +4,9 @@ import { ForbiddenError, EjunzError, NotFoundError, UserFacingError, WebService 
 import { config } from '../config';
 import { randomstring } from '../utils';
 import { errorMessage } from '@ejunz/utils';
+import { Logger } from '../utils';
+
+const logger = new Logger('server');
 export * from '@ejunz/framework/decorators';
 
 export async function apply(pluginContext: Context) {
@@ -65,8 +68,8 @@ export async function apply(pluginContext: Context) {
                 if (error instanceof UserFacingError && !process.env.DEV) error.stack = '';
                 if (!(error instanceof NotFoundError) && !('nolog' in error)) {
                     // eslint-disable-next-line max-len
-                    console.error(`${this.request.method}: ${this.request.path}`, error.msg(), error.params);
-                    if (error.stack) console.error(error.stack);
+                    logger.error(`${this.request.method}: ${this.request.path}`, error.msg(), error.params);
+                    if (error.stack) logger.error(error.stack);
                 }
                 this.response.status = error instanceof UserFacingError ? error.code : 500;
                 this.response.body = {
@@ -77,8 +80,8 @@ export async function apply(pluginContext: Context) {
         });
         server.wsHandlerMixin({
             async onerror(err: EjunzError) {
-                console.error(`Path:${this.request.path}`);
-                console.error(err);
+                logger.error(`Path:${this.request.path}`);
+                logger.error(err);
                 if (err instanceof UserFacingError) err.stack = this.request.path;
                 this.send({
                     error: {

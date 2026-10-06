@@ -43,7 +43,7 @@ const nopMap = '//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIj
                 b.onLoad({ filter: /\.(frontend|ttf|wasm)$/, namespace: 'file' }, (t) => {
                     const file = fs.readFileSync(path.join(t.path));
                     const contents = `module.exports = "${process.argv.includes('--no-binary') ? '' : encodeBinary(file)}";\n${nopMap}`;
-                    console.log(t.path, size(contents));
+                    logger.info('Embedding %s (%s)', t.path, size(contents));
                     return {
                         contents,
                         loader: 'tsx',
@@ -60,14 +60,14 @@ const nopMap = '//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIj
             saslprep: path.resolve(__dirname, 'saslprep.js'),
         },
     });
-    if (res.errors.length) console.error(res.errors);
-    if (res.warnings.length) console.warn(res.warnings);
+    if (res.errors.length) logger.error(res.errors);
+    if (res.warnings.length) logger.warn(res.warnings);
     logger.info(`Resource Size: ${size(res.outputFiles[0].text)}`);
     fs.writeFileSync(path.resolve(process.cwd(), `dist/${appName}.js`), res.outputFiles[0].text);
     fs.writeFileSync(path.resolve(process.cwd(), 'dist/metafile.json'), JSON.stringify(res.metafile));
     logger.info(`Saved to dist/${appName}.js`);
 
-    const dataSource = path.resolve(process.cwd(), 'packages/server/data');
+    const dataSource = path.resolve(process.cwd(), 'packages/data');
     const dataDest = path.resolve(process.cwd(), 'dist/data');
     if (fs.existsSync(dataSource)) {
         logger.info('Copying data directory to dist...');
@@ -84,6 +84,17 @@ const nopMap = '//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIj
         logger.info('Data directory copied successfully');
     } else {
         logger.warn('Data directory not found, skipping copy');
+    }
+    const uiTemplateSource = path.resolve(process.cwd(), 'packages/ui/node/templates');
+    const uiTemplateDest = path.resolve(process.cwd(), 'dist/ui/node/templates');
+    if (fs.existsSync(uiTemplateSource)) {
+        fs.ensureDirSync(uiTemplateDest);
+        for (const file of fs.readdirSync(uiTemplateSource)) {
+            const srcPath = path.join(uiTemplateSource, file);
+            if (fs.statSync(srcPath).isFile()) {
+                fs.copyFileSync(srcPath, path.join(uiTemplateDest, file));
+            }
+        }
     }
     if (!process.env.SEA) return;
     fs.writeFileSync(path.resolve(process.cwd(), 'dist/sea-config.json'), JSON.stringify({

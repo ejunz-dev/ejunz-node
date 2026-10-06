@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { Context } from 'cordis';
 import { Handler } from '@ejunz/framework';
-import path from 'node:path';
-import { fs, randomstring } from '../utils';
+import { createUiPage, createUiScriptPath, readUiBundle, resolveUiAssetPath } from '../../ui';
+import { fs, Logger, randomstring } from '../utils';
 
+const logger = new Logger('handler/node-ui');
 const randomHash = randomstring(8).toLowerCase();
 
 // 提供Node UI的HTML页面
@@ -20,11 +21,10 @@ class NodeUIHomeHandler extends Handler<Context> {
             this.response.type = 'text/html';
             // 在生产模式下，从 /node-ui/main.js 加载
             // 检查构建文件是否存在，如果不存在则提示需要构建
-            const bundlePath = path.resolve(__dirname, '../data/static.node-ui');
+            const bundlePath = resolveUiAssetPath(__dirname, 'data/static.node-ui', '../../data/static.node-ui');
             const hasBundle = fs.existsSync(bundlePath);
-            const scriptPath = `/node-ui/main.js${hasBundle ? `?${randomHash}` : ''}`;
-            const html = `<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Node Dashboard - Ejunz Node</title></head><body><div id="root"></div><script>window.Context=JSON.parse('${JSON.stringify(context).replace(/\\/g, '\\\\').replace(/'/g, '\\\'')}')</script><script src="${scriptPath}"></script></body></html>`;
-            this.response.body = html;
+            const scriptPath = createUiScriptPath('/node-ui/main.js', hasBundle, randomHash);
+            this.response.body = createUiPage({ title: 'Node Dashboard - Ejunz Node', scriptPath, context });
         }
     }
 }
@@ -36,16 +36,17 @@ class NodeUIStaticHandler extends Handler<Context> {
         this.response.addHeader('Cache-Control', 'public');
         this.response.addHeader('Expires', new Date(new Date().getTime() + 86400000).toUTCString());
         this.response.type = 'text/javascript';
-        // Serve built frontend bundle if available, otherwise fallback
+        const bundlePath = resolveUiAssetPath(__dirname, 'data/static.node-ui', '../../data/static.node-ui');
+        if (!fs.existsSync(bundlePath)) {
+            logger.warn('Node UI bundle not found. Please run `yarn build:ui` in packages/ui/node.');
+            this.response.body = '';
+            return;
+        }
         try {
-            const bundlePath = path.resolve(__dirname, '../data/static.node-ui');
-            if (fs.existsSync(bundlePath)) {
-                this.response.body = fs.readFileSync(bundlePath, 'utf-8');
-            } else {
-                this.response.body = 'console.log("Node UI bundle not found. Please run `yarn build:ui` in packages/server/node/ui.")';
-            }
-        } catch (e) {
-            this.response.body = 'console.log("Failed to load Node UI bundle.")';
+            this.response.body = readUiBundle(bundlePath, '');
+        } catch (error) {
+            logger.error('Failed to load Node UI bundle: %s', (error as Error).message);
+            this.response.body = '';
         }
     }
 }

@@ -1,5 +1,5 @@
-import { edgeRegistry } from './registry';
-import { EdgeEnvelope } from './protocol';
+import { edgeRegistry } from '../model/edge-registry';
+import { EdgeEnvelope } from '@ejunz/protocol';
 
 export async function callNodeMcp(nodeId: string, name: string, args: any = {}) {
     return edgeRegistry.request(nodeId, {

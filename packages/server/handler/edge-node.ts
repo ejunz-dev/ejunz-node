@@ -3,8 +3,8 @@ import { ConnectionHandler } from '@ejunz/framework';
 import { Context } from 'cordis';
 import { config, isEdgeMode } from '../config';
 import { Logger } from '../utils';
-import { edgeRegistry } from '../edge/registry';
-import { EdgeEnvelope, prepareEnvelope } from '../edge/protocol';
+import { edgeRegistry } from '../model/edge-registry';
+import { EdgeEnvelope, prepareEnvelope } from '@ejunz/protocol';
 
 const logger = new Logger('edge-node');
 

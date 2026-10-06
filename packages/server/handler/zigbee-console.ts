@@ -4,6 +4,10 @@ import { Context } from 'cordis';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import Zigbee2MqttService from '../service/zigbee2mqtt';
+import { resolveUiAssetPath } from '../../ui';
+import { Logger } from '../utils';
+
+const logger = new Logger('handler/zigbee-console');
 
 // 展开多端点设备为独立设备（与 zigbee2mqtt.ts 中的函数相同）
 function expandMultiEndpointDevices(devices: any[]): any[] {
@@ -166,7 +170,7 @@ export class ZigbeeConsoleConnectionHandler extends ConnectionHandler<Context> {
                             this.send({ type: 'controlResult', success: false, deviceId, error: '缺少设备ID' });
                             return;
                         }
-                        console.log('[zigbee-console] 控制设备:', deviceId, state);
+                        logger.info('[zigbee-console] 控制设备: %s %s', deviceId, state);
                         
                         // 检查是否为端点设备（格式：设备名_l1）
                         let targetDeviceId = deviceId;
@@ -176,14 +180,14 @@ export class ZigbeeConsoleConnectionHandler extends ConnectionHandler<Context> {
                             targetDeviceId = endpointMatch[1];
                             const endpoint = endpointMatch[2];
                             controlCommand = { [`state_${endpoint}`]: state };
-                            console.log('[zigbee-console] 端点控制: 设备=%s, 端点=%s, 命令=%o', targetDeviceId, endpoint, controlCommand);
+                            logger.info('[zigbee-console] 端点控制: 设备=%s, 端点=%s, 命令=%o', targetDeviceId, endpoint, controlCommand);
                         }
                         
                         await svc.setDeviceState(targetDeviceId, controlCommand);
                         this.send({ type: 'controlResult', success: true, deviceId });
                     } catch (e) {
                         const errMsg = (e as Error).message || String(e);
-                        console.error('[zigbee-console] 控制失败:', errMsg);
+                        logger.error('[zigbee-console] 控制失败: %s', errMsg);
                         this.send({ type: 'controlResult', success: false, deviceId: payload?.deviceId, error: errMsg });
                     }
                     break;
@@ -247,7 +251,7 @@ export function broadcastZigbeeUpdate(ctx: Context, type: string, data: any) {
 class ZigbeeConsolePage extends Handler<Context> {
     noCheckPermView = true;
     async get() {
-        const htmlPath = path.join(__dirname, '../node/zigbee-console.html');
+        const htmlPath = resolveUiAssetPath(__dirname, 'ui/node/templates/zigbee-console.html', '../../ui/node/templates/zigbee-console.html');
         if (fs.existsSync(htmlPath)) {
             this.response.type = 'text/html; charset=utf-8';
             this.response.addHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
@@ -256,7 +260,7 @@ class ZigbeeConsolePage extends Handler<Context> {
             const content = fs.readFileSync(htmlPath, 'utf8');
             // 确保文件内容完整
             if (!content.trim().endsWith('</html>')) {
-                console.warn('[zigbee-console] HTML file may be incomplete');
+                logger.warn('[zigbee-console] HTML file may be incomplete');
             }
             this.response.body = content;
         } else {

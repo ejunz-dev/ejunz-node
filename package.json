@@ -3,9 +3,10 @@
   "packageManager": "yarn@4.2.0",
   "private": true,
   "workspaces": [
+    "packages/protocol",
     "packages/server",
-    "packages/server/node/ui",
-    "packages/server/edge/ui"
+    "packages/ui/node",
+    "packages/ui/edge"
   ],
   "scripts": {
     "dev": "node -r ./register.js packages/server/index.ts --debug --node",

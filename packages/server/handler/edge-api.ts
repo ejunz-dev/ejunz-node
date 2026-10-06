@@ -2,10 +2,9 @@
 import { Handler } from '@ejunz/framework';
 import { Context } from 'cordis';
 import { config, isEdgeMode, saveConfig } from '../config';
-import { edgeRegistry } from '../edge/registry';
-import { maskEndpoint } from '../edge/protocol';
-import { callNodeMcp, controlEdgeDevice } from '../edge/device-control';
-import { EDGE_WS_MAX_MESSAGE_BYTES, parseEdgeWsMessage, protocolMessage } from '../edge/ws-protocol';
+import { edgeRegistry } from '../model/edge-registry';
+import { EDGE_WS_MAX_MESSAGE_BYTES, maskEndpoint, parseEdgeWsMessage, protocolMessage } from '@ejunz/protocol';
+import { callNodeMcp, controlEdgeDevice } from '../tools/edge-device-control';
 import { getEdgeAuthConfig, isEdgeAdminAuthorized, requireEdgeAdmin as requireAdmin } from './edge-auth';
 
 class EdgeAuthConfigHandler extends Handler<Context> {

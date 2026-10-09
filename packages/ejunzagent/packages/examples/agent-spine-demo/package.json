@@ -1,0 +1,88 @@
+{
+  "name": "@ejunz/agent-spine-demo",
+  "description": "The default executor-less/UI-less agent spine with fallback session titles, provider-routed retry, and optional persisted goals",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/examples/agent-spine-demo"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "peerDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/agent-instructions": "workspace:^",
+    "@ejunz/agent-loop": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/cordis-plugin-timer": "workspace:^",
+    "@ejunz/goal": "workspace:^",
+    "@ejunz/goal-round-driver": "workspace:^",
+    "@ejunz/home-paths": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/jobs-local": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/llm-retry": "workspace:^",
+    "@ejunz/scope": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-title": "workspace:^",
+    "@ejunz/skill": "workspace:^",
+    "@ejunz/skill-filesystem": "workspace:^",
+    "@ejunz/system-prompt": "workspace:^",
+    "@ejunz/tool-goal": "workspace:^",
+    "@ejunz/tool-jobs": "workspace:^",
+    "@ejunz/tool-skill": "workspace:^",
+    "@ejunz/tools": "workspace:^"
+  },
+  "devDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/agent-instructions": "workspace:^",
+    "@ejunz/agent-loop": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/cordis-plugin-timer": "workspace:^",
+    "@ejunz/fs-local": "workspace:^",
+    "@ejunz/goal": "workspace:^",
+    "@ejunz/goal-round-driver": "workspace:^",
+    "@ejunz/home-paths": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/jobs": "workspace:^",
+    "@ejunz/jobs-local": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/llm-retry": "workspace:^",
+    "@ejunz/scope": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-title": "workspace:^",
+    "@ejunz/skill": "workspace:^",
+    "@ejunz/skill-filesystem": "workspace:^",
+    "@ejunz/subprocess-local": "workspace:^",
+    "@ejunz/system-prompt": "workspace:^",
+    "@ejunz/tool-goal": "workspace:^",
+    "@ejunz/tool-jobs": "workspace:^",
+    "@ejunz/tool-skill": "workspace:^",
+    "@ejunz/tools": "workspace:^"
+  },
+  "dependencies": {
+    "@ejunz/schemastery": "workspace:^"
+  }
+}

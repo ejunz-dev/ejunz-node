@@ -1,0 +1,58 @@
+{
+  "name": "@ejunz/llm-deepseek",
+  "description": "DeepSeek chat-completions adapter for the EjunzAgent LLM seam",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/llm/llm-deepseek"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "peerDependencies": {
+    "@ejunz/anonymous-user-id": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/credentials": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/launch-environment": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/settings": "workspace:^",
+    "@ejunz/timeout": "workspace:^"
+  },
+  "dependencies": {
+    "@ejunz/schemastery": "workspace:^",
+    "eventsource-parser": "^3.1.0"
+  },
+  "devDependencies": {
+    "@ejunz/anonymous-user-id": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/credentials": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/launch-environment": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/settings": "workspace:^",
+    "@ejunz/timeout": "workspace:^"
+  }
+}

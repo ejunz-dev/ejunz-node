@@ -1,0 +1,23 @@
+# Git hooks (lefthook). Keep these local checkpoints fast; CI owns the full
+# repository-wide gate matrix.
+# Install: `node scripts/install-lefthook.mjs` (runs automatically via postinstall).
+
+pre-commit:
+  jobs:
+    - name: lint (staged)
+      glob: '*.{ts,tsx,mts,cts,mjs}'
+      exclude:
+        - 'vendor/*/src/**'
+      run: node_modules/.bin/tsx scripts/run-oxlint.ts --config .oxlintrc.staged.json --fix --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+
+    - name: whitespace (staged)
+      run: git diff --cached --check
+
+    - name: vendor manifest guard
+      run: scripts/check-vendor-manifest.sh
+
+pre-push:
+  jobs:
+    - name: typecheck
+      run: yarn run typecheck

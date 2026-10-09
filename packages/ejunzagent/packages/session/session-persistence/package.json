@@ -1,0 +1,49 @@
+{
+  "name": "@ejunz/session-persistence",
+  "description": "Abstract durable session persistence seam (ctx.sessionPersistence) for the EjunzAgent",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/session/session-persistence"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "peerDependencies": {
+    "@ejunz/brand": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/timeout": "workspace:^"
+  },
+  "devDependencies": {
+    "@ejunz/brand": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/scope": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/timeout": "workspace:^"
+  }
+}

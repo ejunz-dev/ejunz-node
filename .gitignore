@@ -57,6 +57,9 @@ coverage/
 # Local deploy / autostart helpers
 deploy/
 
+# Retained ignored artifacts from the old Agent checkout
+/packages/agent/
+
 # OMC runtime (local only)
 .omc/
 

@@ -1,0 +1,58 @@
+{
+  "name": "@ejunz/web-search-deepseek",
+  "description": "DeepSeek-backed search provider (native web_search via the Anthropic-compatible API) for the EjunzAgent web capability seam (ctx.web)",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/web/web-search-deepseek"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "peerDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/credentials": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/launch-environment": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/settings": "workspace:^",
+    "@ejunz/web": "workspace:^"
+  },
+  "dependencies": {
+    "@ejunz/schemastery": "workspace:^"
+  },
+  "devDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/credentials": "workspace:^",
+    "@ejunz/credentials-local": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/launch-environment": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/settings": "workspace:^",
+    "@ejunz/web": "workspace:^"
+  }
+}

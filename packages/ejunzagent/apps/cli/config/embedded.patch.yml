@@ -1,0 +1,17 @@
+# Embedded runtime transport settings. The embedding Host owns browser routes;
+# this Agent instance binds only a loopback API carrier on an OS-assigned port.
+- id: hmr
+  disabled: true
+
+- id: webserver
+  config:
+    host: '127.0.0.1'
+    port: 0
+
+- id: web-runtime
+  config:
+    trustedHosts: []
+
+- insert:
+    - id: logger-console
+      name: '@ejunz/cordis-plugin-logger-console'

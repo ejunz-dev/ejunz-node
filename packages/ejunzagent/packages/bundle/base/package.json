@@ -1,0 +1,109 @@
+{
+  "name": "@ejunz/base",
+  "description": "The shared ea core as a profile bundle: every profile's first patch layer, inserting the base plugin rows over the empty profile root",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/bundle/base"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "cordis.patch.yml",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "ea": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/agent-default-model": "workspace:^",
+    "@ejunz/agent-loop": "workspace:^",
+    "@ejunz/api-gateway": "workspace:^",
+    "@ejunz/attachment-local": "workspace:^",
+    "@ejunz/command-compact": "workspace:^",
+    "@ejunz/command-feedback": "workspace:^",
+    "@ejunz/command-goal": "workspace:^",
+    "@ejunz/commands": "workspace:^",
+    "@ejunz/compaction-basic": "workspace:^",
+    "@ejunz/compaction-tool-result-pruner": "workspace:^",
+    "@ejunz/cordis-plugin-hmr": "workspace:^",
+    "@ejunz/cordis-plugin-timer": "workspace:^",
+    "@ejunz/credentials-local": "workspace:^",
+    "@ejunz/goal": "workspace:^",
+    "@ejunz/goal-round-driver": "workspace:^",
+    "@ejunz/jobs-local": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/llm-deepseek": "workspace:^",
+    "@ejunz/llm-pi-ai": "workspace:^",
+    "@ejunz/llm-retry": "workspace:^",
+    "@ejunz/permission-presets": "workspace:^",
+    "@ejunz/plan-mode": "workspace:^",
+    "@ejunz/repeat-tool-reminder": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-checkpoint-policy": "workspace:^",
+    "@ejunz/session-persistence-ejunz": "workspace:^",
+    "@ejunz/session-persistence-jsonl": "workspace:^",
+    "@ejunz/session-projection": "workspace:^",
+    "@ejunz/session-query-sqlite": "workspace:^",
+    "@ejunz/session-telemetry-otel": "workspace:^",
+    "@ejunz/session-title": "workspace:^",
+    "@ejunz/session-title-first-prompt-llm": "workspace:^",
+    "@ejunz/settings-file": "workspace:^",
+    "@ejunz/skill": "workspace:^",
+    "@ejunz/skill-badge": "workspace:^",
+    "@ejunz/spill-local": "workspace:^",
+    "@ejunz/spill-policy": "workspace:^",
+    "@ejunz/subagent": "workspace:^",
+    "@ejunz/subagent-fork-in-process": "workspace:^",
+    "@ejunz/subagent-spawn-in-process": "workspace:^",
+    "@ejunz/system-prompt": "workspace:^",
+    "@ejunz/token-meter": "workspace:^",
+    "@ejunz/tool-call-timeout-policy": "workspace:^",
+    "@ejunz/tool-goal": "workspace:^",
+    "@ejunz/tool-jobs": "workspace:^",
+    "@ejunz/tool-skill": "workspace:^",
+    "@ejunz/tool-todo": "workspace:^",
+    "@ejunz/tool-web": "workspace:^",
+    "@ejunz/tool-workflow": "workspace:^",
+    "@ejunz/tools": "workspace:^",
+    "@ejunz/typert-loader": "workspace:^",
+    "@ejunz/typert-registry": "workspace:^",
+    "@ejunz/user-approval": "workspace:^",
+    "@ejunz/user-questions": "workspace:^",
+    "@ejunz/web": "workspace:^",
+    "@ejunz/web-search-deepseek": "workspace:^",
+    "@ejunz/workflow-worker-thread": "workspace:^"
+  },
+  "peerDependencies": {
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^"
+  },
+  "devDependencies": {
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^"
+  }
+}

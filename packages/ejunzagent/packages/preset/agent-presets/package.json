@@ -1,0 +1,73 @@
+{
+  "name": "@ejunz/agent-presets",
+  "description": "Per-session agent composition from preset cordis.yml files for the EjunzAgent",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/preset/agent-presets"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./types": {
+      "types": "./lib/types/types.d.ts",
+      "default": "./lib/types/types.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/types/**/*.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "peerDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/atomic-write": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/cordis-plugin-include": "workspace:^",
+    "@ejunz/cordis-plugin-loader": "workspace:^",
+    "@ejunz/home-paths": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/scope": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/settings": "workspace:^",
+    "@ejunz/system-prompt": "workspace:^"
+  },
+  "dependencies": {
+    "@ejunz/schemastery": "workspace:^",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/agent-loop": "workspace:^",
+    "@ejunz/atomic-write": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/cordis-plugin-include": "workspace:^",
+    "@ejunz/cordis-plugin-loader": "workspace:^",
+    "@ejunz/home-paths": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/scope": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/settings": "workspace:^",
+    "@ejunz/settings-file": "workspace:^",
+    "@ejunz/system-prompt": "workspace:^",
+    "@ejunz/tools": "workspace:^"
+  }
+}

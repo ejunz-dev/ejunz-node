@@ -1,0 +1,57 @@
+{
+  "name": "@ejunz/session-query",
+  "description": "Combined session query service contract with concrete reads, traces, and filters",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/session-query/session-query"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "peerDependencies": {
+    "@ejunz/brand": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-persistence": "workspace:^",
+    "@ejunz/session-title": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@ejunz/session-persistence": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@ejunz/brand": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-persistence": "workspace:^",
+    "@ejunz/session-title": "workspace:^"
+  }
+}

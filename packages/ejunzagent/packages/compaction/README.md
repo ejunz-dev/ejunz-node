@@ -1,0 +1,15 @@
+# compaction/ — compaction capability family
+
+
+A compaction capability family (see capability seams): a Service Definition, a summarizing provider, a model-free tool-result pruning companion, and a human command Consumer. All **product** packages.
+
+| Package | Role | ctx key |
+|---|---|---|
+| [`compaction/`](compaction/README.md) | Compaction seam and event vocabulary | `ctx.compaction` |
+| [`compaction-basic/`](compaction-basic/README.md) | Token-pressure and summarization backend | registers `ctx.compaction` |
+| [`compaction-tool-result-pruner/`](compaction-tool-result-pruner/README.md) | Optional model-free tool-result pruning | `ctx.toolResultPruner` |
+| [`command-compact/`](command-compact/README.md) | Human compaction command | registers on `ctx.commands` |
+
+The backend, optional pruner, and human command compose through the seam; token measurement remains a separate LLM-family service. The compaction capability-seam Agent Note owns the dependency rationale.
+
+The subsystem reference — the `compaction/*` events, `CompactionResult`, the service, pruning outcomes — is [docs/subsystems/compaction.md](../../docs/subsystems/compaction.md); the seam's deliberate `ea-session`/`ea-llm` dependency is recorded in the compaction capability-seam Agent Note.

@@ -50,6 +50,8 @@ function applyEdge(ctx: Context) {
     ctx.inject(['server'], (c) => {
         c.plugin(require('./handler/edge-node'));
         c.plugin(require('./handler/edge-api'));
+        c.plugin(require('./handler/edge-llm-config'));
+        c.plugin(require('./handler/edge-agent'));
         c.plugin(require('./handler/edge-ui'));
         c.server.listen();
     });

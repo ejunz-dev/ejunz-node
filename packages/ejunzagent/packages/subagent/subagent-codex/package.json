@@ -1,0 +1,61 @@
+{
+  "name": "@ejunz/subagent-codex",
+  "description": "One-shot Codex subagent provider over the official app-server protocol",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/subagent/subagent-codex"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "peerDependencies": {
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/sdk-protocol": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/subagent": "workspace:^",
+    "@ejunz/subprocess": "workspace:^",
+    "@ejunz/timeout": "workspace:^"
+  },
+  "dependencies": {
+    "@ejunz/schemastery": "workspace:^"
+  },
+  "devDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/cordis-plugin-loader": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/sdk-protocol": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/subagent": "workspace:^",
+    "@ejunz/subprocess": "workspace:^",
+    "@ejunz/subprocess-local": "workspace:^",
+    "@ejunz/timeout": "workspace:^",
+    "@openai/codex": "0.147.0"
+  }
+}

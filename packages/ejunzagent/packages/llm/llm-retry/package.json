@@ -1,0 +1,67 @@
+{
+  "name": "@ejunz/llm-retry",
+  "description": "Provider-routed LLM request retry policy for the EjunzAgent",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/llm/llm-retry"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./types": {
+      "types": "./lib/types/types.d.ts",
+      "default": "./lib/types/types.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/types/**/*.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "peerDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/brand": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/timeout": "workspace:^"
+  },
+  "dependencies": {
+    "@ejunz/schemastery": "workspace:^"
+  },
+  "devDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/agent-loop": "workspace:^",
+    "@ejunz/brand": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/cordis-plugin-include": "workspace:^",
+    "@ejunz/cordis-plugin-loader": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/llm-deepseek": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-persistence-jsonl": "workspace:^",
+    "@ejunz/session-persistence-sqlite": "workspace:^",
+    "@ejunz/system-prompt": "workspace:^",
+    "@ejunz/timeout": "workspace:^",
+    "@ejunz/tools": "workspace:^"
+  }
+}

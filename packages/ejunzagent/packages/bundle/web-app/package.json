@@ -1,0 +1,66 @@
+{
+  "name": "@ejunz/web-app",
+  "description": "Embedded Host API composition without a browser client",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/bundle/web-app"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "cordis.patch.yml",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "ea": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@ejunz/agent-presets": "workspace:^",
+    "@ejunz/api-remotes": "workspace:^",
+    "@ejunz/client-connection": "workspace:^",
+    "@ejunz/host-apiproxy": "workspace:^",
+    "@ejunz/host-plugin-inventory": "workspace:^",
+    "@ejunz/host-webserver": "workspace:^",
+    "@ejunz/schemastery": "workspace:^",
+    "@ejunz/session-persistence-ejunz": "workspace:^",
+    "@ejunz/session-projection-cache": "workspace:^",
+    "@ejunz/session-stats": "workspace:^",
+    "@ejunz/storage": "workspace:^",
+    "@ejunz/storage-domain": "workspace:^",
+    "@ejunz/storage-ejunz": "workspace:^"
+  },
+  "peerDependencies": {
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/cordis-plugin-loader": "workspace:^",
+    "@ejunz/invariants": "workspace:^"
+  },
+  "devDependencies": {
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/cordis-plugin-loader": "workspace:^",
+    "@ejunz/invariants": "workspace:^"
+  }
+}

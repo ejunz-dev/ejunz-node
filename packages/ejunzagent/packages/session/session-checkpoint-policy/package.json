@@ -1,0 +1,56 @@
+{
+  "name": "@ejunz/session-checkpoint-policy",
+  "description": "Semantic session durability checkpoints before model requests and tool side effects",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/session/session-checkpoint-policy"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "peerDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-persistence": "workspace:^",
+    "@ejunz/tools": "workspace:^"
+  },
+  "devDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/agent-loop": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/cordis-plugin-loader": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-persistence": "workspace:^",
+    "@ejunz/session-persistence-jsonl": "workspace:^",
+    "@ejunz/system-prompt": "workspace:^",
+    "@ejunz/tools": "workspace:^"
+  }
+}

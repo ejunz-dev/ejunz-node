@@ -1,0 +1,9 @@
+# The `minimal` preset id is retained for existing sessions; its tool set
+# omits host filesystem and operating-system access.
+
+- id: persona
+  name: '@ejunz/persona'
+  config:
+    text: You are a helpful software engineer assistant.
+    complete: true
+    includeRuntimeContext: false

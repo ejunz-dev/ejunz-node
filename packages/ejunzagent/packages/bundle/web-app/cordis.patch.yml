@@ -1,0 +1,102 @@
+# Embedded Host API composition. This bundle exposes server routes without a
+# browser UI or desktop interaction surface.
+
+- id: web-search-deepseek
+  disabled: true
+
+- id: session-persistence-jsonl
+  disabled: true
+
+- id: session-query-sqlite
+  config:
+    path: ':memory:'
+    openAt: never
+
+- insert:
+    - id: storage
+      name: '@ejunz/storage'
+
+    - id: storage-json
+      disabled: true
+
+    - id: storage-ejunz
+      name: '@ejunz/storage-ejunz'
+      config:
+        origin: !!js process.env.EJUNZ_AGENT_DATA_ORIGIN
+        token: !!js process.env.EJUNZ_AGENT_DATA_TOKEN
+
+    - id: storage-domain
+      name: '@ejunz/storage-domain'
+      config:
+        backend: ejunz
+
+    - id: session-projection-cache
+      name: '@ejunz/session-projection-cache'
+      config:
+        writeEveryEvents: 200
+        writeIntervalMs: 5000
+
+    - id: session-stats
+      name: '@ejunz/session-stats'
+
+    - id: plugin-inventory
+      name: '@ejunz/host-plugin-inventory'
+
+    - id: api-gateway
+      name: '@ejunz/host-apiproxy'
+      config:
+        useDefaultModel: false
+
+    - id: webserver
+      name: '@ejunz/host-webserver'
+      config:
+        host: '127.0.0.1'
+        port: 0
+
+    - id: web-runtime
+      name: '@ejunz/web-app'
+      config:
+        trustedHosts: []
+
+    - id: connection
+      name: '@ejunz/client-connection'
+      inject: [webRuntime]
+      config:
+        trustedHosts: !!js ctx.webRuntime.trustedHosts
+
+    - id: api-remotes
+      name: '@ejunz/api-remotes'
+
+    - id: session-persistence-ejunz
+      name: '@ejunz/session-persistence-ejunz'
+      config:
+        origin: !!js process.env.EJUNZ_AGENT_DATA_ORIGIN
+        token: !!js process.env.EJUNZ_AGENT_DATA_TOKEN
+
+    - id: agent-presets
+      name: '@ejunz/agent-presets'
+      config:
+        default: standard
+        includeUserRoot: false
+
+# Keep model-facing registries scoped to the selected Agent preset.
+- id: tool-jobs
+  disabled: true
+
+- id: tool-skill
+  disabled: true
+
+- id: tool-goal
+  disabled: true
+
+- id: plan-mode
+  disabled: true
+
+- id: tool-todo
+  disabled: true
+
+- id: tool-web
+  disabled: true
+
+- id: tool-workflow
+  disabled: true

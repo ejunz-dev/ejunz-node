@@ -1,0 +1,62 @@
+{
+  "name": "@ejunz/session-telemetry-otel",
+  "description": "OpenTelemetry backend for the EjunzAgent telemetry seam: hands captured session records to the OTel JS SDK's log pipeline",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/session/session-telemetry-otel"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "@ejunz/schemastery": "workspace:^",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/api-logs": "^0.220.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.220.0",
+    "@opentelemetry/otlp-exporter-base": "^0.220.0",
+    "@opentelemetry/resources": "^2.9.0",
+    "@opentelemetry/sdk-logs": "^0.220.0"
+  },
+  "peerDependencies": {
+    "@ejunz/anonymous-user-id": "workspace:^",
+    "@ejunz/command-feedback": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-telemetry": "workspace:^"
+  },
+  "devDependencies": {
+    "@ejunz/anonymous-user-id": "workspace:^",
+    "@ejunz/command-feedback": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/cordis-plugin-loader": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-telemetry": "workspace:^"
+  }
+}

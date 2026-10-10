@@ -1,0 +1,96 @@
+{
+  "name": "@ejunz/subagent",
+  "description": "Abstract subagent seam (ctx.subagents): named-provider registry for delegating to child agents",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/subagent/subagent"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./client": {
+      "types": "./lib/types/client.d.ts",
+      "default": "./lib/types/client.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/types/**/*.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/agent-presets": "workspace:^",
+    "@ejunz/brand": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/jobs": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/scope": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-persistence": "workspace:^",
+    "@ejunz/session-projection": "workspace:^",
+    "@ejunz/session-projection-cache": "workspace:^",
+    "@ejunz/tools": "workspace:^",
+    "@ejunz/user-approval": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@ejunz/agent-presets": {
+      "optional": true
+    },
+    "@ejunz/jobs": {
+      "optional": true
+    },
+    "@ejunz/session-persistence": {
+      "optional": true
+    },
+    "@ejunz/session-projection": {
+      "optional": true
+    },
+    "@ejunz/session-projection-cache": {
+      "optional": true
+    },
+    "@ejunz/user-approval": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/agent-presets": "workspace:^",
+    "@ejunz/brand": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/jobs": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/scope": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-persistence": "workspace:^",
+    "@ejunz/session-projection": "workspace:^",
+    "@ejunz/session-projection-cache": "workspace:^",
+    "@ejunz/storage": "workspace:^",
+    "@ejunz/storage-domain": "workspace:^",
+    "@ejunz/tools": "workspace:^",
+    "@ejunz/user-approval": "workspace:^"
+  }
+}

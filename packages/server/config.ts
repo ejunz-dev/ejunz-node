@@ -79,9 +79,7 @@ const nodeSchema = Schema.object({
     ws: Schema.object({
         endpoint: Schema.string().default(''),
         token: Schema.string().default(''),
-        localEndpoint: Schema.string().default('/mcp/ws'),
-        enabled: Schema.boolean().default(true),
-    }).default({ endpoint: '', token: '', localEndpoint: '/mcp/ws', enabled: true }),
+    }).default({ endpoint: '', token: '' }),
 }).description('Node Config');
 
 const edgeSchema = Schema.object({

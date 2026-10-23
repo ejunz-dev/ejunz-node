@@ -4,7 +4,7 @@ import {
   Tabs, Text, Title,
 } from '@mantine/core';
 import {
-  IconDashboard, IconSettings, IconTerminal, IconTool,
+  IconDashboard, IconSettings, IconTerminal,
 } from '@tabler/icons-react';
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -15,7 +15,6 @@ const mainLinks = [
   { link: '/', label: 'Dashboard', icon: <IconDashboard style={iconStyle} /> },
   { link: '/console', label: 'Zigbee 控制台', icon: <IconTerminal style={iconStyle} /> },
   { link: '/settings', label: 'MQTT Bridge 配置', icon: <IconSettings style={iconStyle} /> },
-  { link: '/mcp-tools', label: 'MCP 工具管理', icon: <IconTool style={iconStyle} /> },
 ];
 
 export function Header() {

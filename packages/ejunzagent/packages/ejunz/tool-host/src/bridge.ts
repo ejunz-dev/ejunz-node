@@ -26,7 +26,7 @@ export interface HostToolBridge {
    * @param signal - aborts the request.
    * @returns the tool result.
    */
-  call(sessionId: string, name: string, args: HostArguments, signal: AbortSignal): Promise<JsonValue>
+  call(sessionId: string, name: string, args: HostArguments, signal: AbortSignal, runtimeDelegation?: boolean): Promise<JsonValue>
   /**
    * Read the LLM runtime configuration for one session's domain.
    *
@@ -82,14 +82,32 @@ async function request(
   } catch (error) {
     throw new Error(`Ejunz Agent bridge request failed for ${url}: ${formatThrown(error)}`, { cause: error })
   }
-  let payload: BridgeResponse
+  let rawPayload: unknown
   try {
-    payload = await response.json() as BridgeResponse
+    rawPayload = await response.json()
   } catch (error) {
     throw new Error(`Ejunz Agent bridge request failed for ${url}: non-JSON response (${response.status}): ${formatThrown(error)}`)
   }
+  if (typeof rawPayload === 'string') {
+    try {
+      rawPayload = JSON.parse(rawPayload)
+    } catch (error) {
+      throw new Error(`Ejunz Agent bridge request failed for ${url}: invalid JSON response envelope (${response.status}): ${formatThrown(error)}`)
+    }
+  }
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
+    throw new Error(`Ejunz Agent bridge request failed for ${url}: unexpected response envelope (${response.status}, ${typeof rawPayload})`)
+  }
+  const payload = rawPayload as BridgeResponse
   if (!response.ok || payload.ok !== true) {
-    throw new Error(payload.error?.message || `Ejunz Agent bridge request failed: ${response.status}`)
+    const message = payload.error?.message
+    if (message) throw new Error(message)
+    const keys = Object.keys(payload).join(', ')
+    const errorValue = (payload as { error?: unknown }).error
+    const errorKeys = errorValue && typeof errorValue === 'object' ? Object.keys(errorValue).join(', ') : undefined
+    throw new Error(
+      `Ejunz Agent bridge request failed: ${response.status} (unexpected response envelope: ${keys}${errorKeys ? `; error fields: ${errorKeys}` : ''})`,
+    )
   }
   return payload.value
 }
@@ -103,11 +121,19 @@ async function request(
 export function createHostToolBridge(origin: string, token: string): HostToolBridge {
   return {
     async catalog(signal, context) {
-      const body = context === undefined ? {} : { sessionId: context.sessionId }
+      const body = context === undefined ? {} : {
+        sessionId: context.sessionId,
+        ...(context.runtimeTools === undefined ? {} : { runtimeTools: context.runtimeTools }),
+      }
       return parseHostCatalog(await request(origin, token, '/api/ejunz-agent/data/tools/catalog', body, signal))
     },
-    async call(sessionId, name, args, signal) {
-      const value = await request(origin, token, '/api/ejunz-agent/data/tools/call', { sessionId, name, args }, signal)
+    async call(sessionId, name, args, signal, runtimeDelegation) {
+      const value = await request(origin, token, '/api/ejunz-agent/data/tools/call', {
+        sessionId,
+        name,
+        args,
+        ...(runtimeDelegation === true ? { runtimeDelegation: true } : {}),
+      }, signal)
       return value as JsonValue
     },
     async runtime(sessionId, signal) {
@@ -131,6 +157,6 @@ export function createHostToolBridge(origin: string, token: string): HostToolBri
 export function createHostToolClient(bridge: HostToolBridge): HostToolClient {
   return {
     catalog: (signal, context) => bridge.catalog(signal, context),
-    call: (name, args, context, signal) => bridge.call(context.sessionId, name, args, signal),
+    call: (name, args, context, signal) => bridge.call(context.sessionId, name, args, signal, context.runtimeDelegation),
   }
 }

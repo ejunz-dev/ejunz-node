@@ -2,7 +2,7 @@
 
 Registers the tool set a host declares, scoped to each Agent session.
 
-The package keeps no tool list of its own. The attached host client declares the set, so a deployment registers exactly the tools its host exposes, with the host's names, descriptions, and parameter schemas. A host serves its catalog per domain, so the install runs while one Agent is composed: the current Agent session id is what lets the host resolve the acting domain, and the tools land in that Agent's scope alone.
+The package keeps no tool list of its own. The attached host client declares the set, so a deployment registers exactly the tools its host exposes, with the host's names, descriptions, and parameter schemas. A host serves its catalog per domain, so the catalog is read for one Agent session: the current session id lets the host resolve the acting domain, and the tools land in that Agent's scope alone. When the session's add-on state changes, the live Agent refreshes its catalog and guidance before the update is acknowledged.
 
 ## Configuration
 
@@ -14,8 +14,10 @@ The package does not access host storage directly. A deployment supplies a root 
 
 A client declares what it can execute and executes it:
 
-- `catalog(signal, { sessionId })` declares the tools to install: each one's `name`, `description`, and `inputSchema`, plus optional `guidance` describing the set and the scope its calls act for. Reading with a session declares what that session's domain publishes; reading without one declares the set every session shares.
-- `call(name, args, { sessionId }, signal)` executes one declared tool by the name it was registered under.
+- `catalog(signal, { sessionId, runtimeTools })` declares the tools to install: each one's `name`, `description`, and `inputSchema`, plus optional `runtimeDelegation` and `guidance`. The Agent supplies schemas for tools installed in its current scope; the host merges those capabilities with its registered tools and applies session visibility. Reading without a session omits runtime-only tools.
+- `call(name, args, { sessionId, runtimeDelegation }, signal)` executes one declared host tool, or asks the host to authorize delegation of a same-named native Agent tool.
+
+A host may return a private `{"type":"ejunz/runtime-tool-call","toolName":"..."}` result to ask the adapter to execute the same-named native tool in the current Agent runtime with the original call arguments. For runtime-only catalog entries, `runtimeDelegation: true` marks the wrapper and the call asks the host to authorize delegation; the host checks the session's `agent-runtime` add-on and user privilege before returning the marker. The adapter captures the same-scope native definition before registering the scoped host tool, rejects a different name or missing implementation, and preserves the native output/presentation contract. The delegation envelope is consumed internally and never returned to the model. Ordinary host results continue through the host tool's result renderer.
 
 For the standalone Agent process, the CLI installs a root bridge from `EJUNZ_AGENT_DATA_ORIGIN` and `EJUNZ_AGENT_DATA_TOKEN`. The Agent factory installs the set in each Agent's `setup`, before that Agent is published, so an Agent never reaches its first turn without the tools its domain publishes. A composition that cannot reach the provided installer service builds the bridge from those same environment variables and installs with its own client.
 
@@ -46,11 +48,11 @@ One tool per entry of the host-provided catalog for this session's domain, under
 
 #### Token effect
 
-Every declared tool occupies one entry of the request's `tools` array, and the host's description and parameter schema are sent verbatim, so a deployment's own catalog bounds the cost. This package adds no schema text of its own, and a result is the host's lossless JSON value rendered as text.
+Every declared tool occupies one entry of the request's `tools` array, and the host's description and parameter schema are sent verbatim, so a deployment's own catalog bounds the cost. This package adds no schema text of its own. Ordinary host results are rendered from the host's lossless JSON value; delegated native results use the captured native tool's output contract.
 
 #### KV Cache effect
 
-Each composition reads the catalog for its own session and installs it into its own Agent scope, so a change in the host's catalog alters the tool block from the first request after the next composition.
+Each Agent reads the catalog for its own session and installs it into its own scope. A session add-on change refreshes that scope's tool block before the next model request; the changed tool block invalidates the prior prompt-cache prefix for that request.
 
 ### System prompt section
 
@@ -70,7 +72,7 @@ The section costs exactly the host's guidance text, which the host builds while 
 
 #### KV Cache effect
 
-The guidance is registered per Agent, so it stays stable across a session's turns and changes only when the Agent is composed again under another domain.
+The guidance is registered per Agent and stays stable across turns until that session's add-on state changes; the host refreshes it together with the tool catalog before acknowledging the change.
 
 ## Known Limitations and Deferred Work
 

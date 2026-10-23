@@ -41,6 +41,7 @@ export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   'schedule/change',
   'session/addons',
   'session/end-seed',
+  'session/permission-injection',
   'session/plugins',
   'session/title',
   'session/title-llm-request',

@@ -29,7 +29,7 @@ import {
 } from '@ejunz/agent-presets'
 import type { PresetBearingSession } from '@ejunz/agent-presets'
 import type {} from '@ejunz/tools'
-import { createHostToolBridge, createHostToolClient, installHostTools } from '@ejunz/tool-host'
+import { createHostToolBridge, createHostToolClient, installHostTools, refreshHostTools } from '@ejunz/tool-host'
 import type {
   ApiProxy, ConfigurableProviderView, CredentialView, GoalRef, HistoryEntry, HostFrame,
   ModelCatalogFailure, ModelProviderGroup,
@@ -1709,7 +1709,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           if (hasSubagentOwner({ header: inspected.meta }, undefined)) {
             throw new SubagentSessionOwnership(sessionId)
           }
-          if (inspected.meta.cwd !== cwd) {
+          if (inspected.meta.cwd !== undefined && inspected.meta.cwd !== cwd) {
             throw new SessionCwdConflict(sessionId, cwd, inspected.meta.cwd)
           }
           // Resolved from the log, not the header: a session that switched
@@ -1768,7 +1768,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     // covers every path that yields a live agent — freshly created, adopted
     // live, resumed from disk, or recovered by the concurrent-creation catch.
     assertPresetUnchanged(sessionId, presetId, resolveSessionPreset(agent.session))
-    if (agent.session.header.cwd !== cwd) {
+    if (agent.session.header.cwd !== undefined && agent.session.header.cwd !== cwd) {
       throw new SessionCwdConflict(sessionId, cwd, agent.session.header.cwd)
     }
     return agent
@@ -2490,6 +2490,33 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             }
             const durable = await durablePromptContent(ctx, content)
             const message: UserMessage = createUserMessage({ content: durable, source })
+            if (request.payload.addonSnapshot?.length) {
+              const recorded = new Set<string>()
+              for (const event of agent.session.events) {
+                if (event.type === 'session/addons') {
+                  if ('addonId' in event.data) recorded.add(event.data.addonId)
+                  else event.data.snapshot.forEach(state => recorded.add(state.addonId))
+                } else if (event.type === 'session/plugins') {
+                  recorded.add(event.data.pluginId)
+                }
+              }
+              const snapshot = request.payload.addonSnapshot.filter(state => !recorded.has(state.addonId))
+              if (snapshot.length) {
+                agent.session.append('session/addons', { snapshot: snapshot.map(({ addonId, enabled }) => ({ addonId, enabled })) })
+              }
+              for (const state of request.payload.addonSnapshot) {
+                if (!state.enabled || !state.permissionInjection) continue
+                const injection = {
+                  addonId: state.addonId,
+                  ...state.permissionInjection,
+                }
+                const previous = [...agent.session.events].reverse().find(event =>
+                  event.type === 'session/permission-injection' && event.data.addonId === state.addonId,
+                )
+                if (previous?.type === 'session/permission-injection' && JSON.stringify(previous.data) === JSON.stringify(injection)) continue
+                agent.session.append('session/permission-injection', injection)
+              }
+            }
             if (mode === 'steer') agent.steer(message)
             else agent.followup(message)
           } catch (error: unknown) {
@@ -2543,22 +2570,66 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       },
 
       async addons(request) {
-        const { sessionId, addonId, enabled } = request.payload
+        const { sessionId, addonId, enabled, permissionInjection } = request.payload
         const found = await agentFor(sessionId)
         if ('error' in found) return err(request, found.error)
         try {
-          const previous = [...found.agent.session.events].reverse().find(event =>
-            event.type === 'session/addons' && event.data.addonId === addonId,
-          )
-          if (previous?.type === 'session/addons' && previous.data.enabled === enabled) {
-            return ok(request, { accepted: true as const, seq: previous.seq })
+          const previous = [...found.agent.session.events].reverse().find(event => event.type === 'session/addons' && (
+            'addonId' in event.data
+              ? event.data.addonId === addonId
+              : event.data.snapshot.some(state => state.addonId === addonId)
+          ))
+          const previousEnabled = previous?.type === 'session/addons'
+            ? 'addonId' in previous.data
+              ? previous.data.enabled
+              : previous.data.snapshot.find(state => state.addonId === addonId)?.enabled
+            : undefined
+          const appendPermissionInjection = () => enabled && permissionInjection
+            ? found.agent.session.append('session/permission-injection', {
+                addonId,
+                ...permissionInjection,
+              })
+            : undefined
+          if (previous && previousEnabled === enabled) {
+            const injection = appendPermissionInjection()
+            await ctx.sessions.flush(found.agent.session)
+            await refreshHostTools(found.agent.ctx)
+            return ok(request, { accepted: true as const, seq: injection?.seq ?? previous.seq })
           }
           const event = found.agent.session.append('session/addons', { addonId, enabled })
-          return ok(request, { accepted: true as const, seq: event.seq })
+          const injection = appendPermissionInjection()
+          await ctx.sessions.flush(found.agent.session)
+          await refreshHostTools(found.agent.ctx)
+          return ok(request, { accepted: true as const, seq: injection?.seq ?? event.seq })
         } catch (error: unknown) {
           return err(request, {
             code: 'internal',
-            message: 'addon mount event append failed',
+            message: 'addon state update failed',
+            details: { reason: String(error) },
+          })
+        }
+      },
+
+      async permissionInjection(request) {
+        const { sessionId, injections } = request.payload
+        const found = await agentFor(sessionId)
+        if ('error' in found) return err(request, found.error)
+        try {
+          let seq: number | undefined
+          for (const injection of injections) {
+            const previous = [...found.agent.session.events].reverse().find(event =>
+              event.type === 'session/permission-injection' && event.data.addonId === injection.addonId,
+            )
+            if (previous?.type === 'session/permission-injection'
+              && JSON.stringify(previous.data) === JSON.stringify(injection)) continue
+            seq = found.agent.session.append('session/permission-injection', injection).seq
+          }
+          if (seq !== undefined) await ctx.sessions.flush(found.agent.session)
+          return ok(request, { accepted: true as const, ...(seq === undefined ? {} : { seq }) })
+        } catch (error: unknown) {
+          return err(request, {
+            code: 'internal',
+            message: 'permission injection update failed',
             details: { reason: String(error) },
           })
         }

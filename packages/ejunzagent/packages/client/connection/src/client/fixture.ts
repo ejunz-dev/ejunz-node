@@ -2249,7 +2249,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         return ok(request, { selected })
       },
       prompt: (request) => {
-        const { sessionId: id, mode, content } = request.payload
+        const { sessionId: id, mode, content, addonSnapshot } = request.payload
         const summary = summaryOf(id)
         if (summary === undefined) {
           return err(request, { code: 'session-not-found', message: `no session ${id}`, details: { sessionId: id } })
@@ -2282,6 +2282,30 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           attachments.set(String(attachment.attachmentId), { attachment, data: block.data })
           return { type: 'image', attachment }
         })
+        if (addonSnapshot?.length) {
+          const recorded = new Set<string>()
+          for (const event of logOf(id)) {
+            if (event.type === 'session/addons') {
+              if ('addonId' in event.data) recorded.add(event.data.addonId)
+              else event.data.snapshot.forEach(state => recorded.add(state.addonId))
+            } else if (event.type === 'session/plugins') {
+              recorded.add(event.data.pluginId)
+            }
+          }
+          const snapshot = addonSnapshot.filter(state => !recorded.has(state.addonId))
+          if (snapshot.length) {
+            append(id, { type: 'session/addons', data: { snapshot: snapshot.map(({ addonId, enabled }) => ({ addonId, enabled })) } })
+          }
+          for (const state of addonSnapshot) {
+            if (!state.enabled || !state.permissionInjection) continue
+            const injection = { addonId: state.addonId, ...state.permissionInjection }
+            const previous = [...logOf(id)].reverse().find(event =>
+              event.type === 'session/permission-injection' && event.data.addonId === state.addonId,
+            )
+            if (previous?.type === 'session/permission-injection' && JSON.stringify(previous.data) === JSON.stringify(injection)) continue
+            append(id, { type: 'session/permission-injection', data: injection })
+          }
+        }
         if (mode === 'steer' && replays.has(id)) {
           // Steering: the durable user/message lands inside the current turn; the replay continues.
           append(id, { type: 'user/message', surfaceOp: 'append', data: userMessage(durable) })
@@ -2345,7 +2369,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         return ok(request, { accepted: true as const })
       },
       addons: (request) => {
-        const { sessionId, addonId, enabled } = request.payload
+        const { sessionId } = request.payload
         const summary = summaryOf(sessionId)
         if (summary === undefined) {
           return err(request, {
@@ -2355,16 +2379,58 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           })
         }
         const log = logOf(sessionId)
-        const previous = [...log].reverse().find(event =>
-          event.type === 'session/addons' && event.data.addonId === addonId,
-        )
-        if (previous?.type === 'session/addons' && previous.data.enabled === enabled) {
-          return ok(request, { accepted: true as const, seq: previous.seq })
+        const { addonId, enabled, permissionInjection } = request.payload
+        const previous = [...log].reverse().find(event => event.type === 'session/addons' && (
+          'addonId' in event.data
+            ? event.data.addonId === addonId
+            : event.data.snapshot.some(state => state.addonId === addonId)
+        ))
+        const previousEnabled = previous?.type === 'session/addons'
+          ? 'addonId' in previous.data
+            ? previous.data.enabled
+            : previous.data.snapshot.find(state => state.addonId === addonId)?.enabled
+          : undefined
+        const appendPermissionInjection = () => {
+          if (!enabled || !permissionInjection) return undefined
+          const seq = log.length
+          append(sessionId, {
+            type: 'session/permission-injection',
+            data: { addonId, ...permissionInjection },
+          })
+          return seq
+        }
+        if (previous && previousEnabled === enabled) {
+          const injectionSeq = appendPermissionInjection()
+          return ok(request, { accepted: true as const, seq: injectionSeq ?? previous.seq })
         }
         summary.updatedAt = Date.now()
         const seq = log.length
         append(sessionId, { type: 'session/addons', data: { addonId, enabled } })
-        return ok(request, { accepted: true as const, seq })
+        const injectionSeq = appendPermissionInjection()
+        return ok(request, { accepted: true as const, seq: injectionSeq ?? seq })
+      },
+      permissionInjection: (request) => {
+        const { sessionId, injections } = request.payload
+        const summary = summaryOf(sessionId)
+        if (summary === undefined) {
+          return err(request, {
+            code: 'session-not-found',
+            message: `no session ${sessionId}`,
+            details: { sessionId },
+          })
+        }
+        const log = logOf(sessionId)
+        let seq: number | undefined
+        for (const injection of injections) {
+          const previous = [...log].reverse().find(event =>
+            event.type === 'session/permission-injection' && event.data.addonId === injection.addonId,
+          )
+          if (previous?.type === 'session/permission-injection' && JSON.stringify(previous.data) === JSON.stringify(injection)) continue
+          seq = log.length
+          append(sessionId, { type: 'session/permission-injection', data: injection })
+        }
+        if (seq !== undefined) summary.updatedAt = Date.now()
+        return ok(request, { accepted: true as const, ...(seq === undefined ? {} : { seq }) })
       },
       attachment: (request) => {
         const stored = attachments.get(String(request.payload.attachmentId))
@@ -2813,6 +2879,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'session.command': return this.api.sessions.command(request, signal)
       case 'session.inject': return this.api.sessions.inject(request)
       case 'session.addons': return this.api.sessions.addons(request)
+      case 'session.permissionInjection': return this.api.sessions.permissionInjection(request)
       case 'subagent.list': return this.api.subagents.list(request)
       case 'subagent.history': return this.api.subagents.history(request)
       case 'subagent.prompt': return this.api.subagents.prompt(request, signal)

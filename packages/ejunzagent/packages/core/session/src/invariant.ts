@@ -144,6 +144,27 @@ function validateEvent(
     }
     case 'user/message':
       break
+    case 'session/permission-injection': {
+      const { addonId, permissions } = event.data
+      if (typeof addonId !== 'string' || !/^[a-z][a-z0-9._-]{0,63}$/.test(addonId)) {
+        fail('permission injection requires a valid add-on id')
+      }
+      if (!Array.isArray(permissions)) fail('permission injection requires a permission list')
+      for (const value of permissions as unknown[]) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+          fail('permission injection contains an invalid permission')
+        }
+        const permission = value as { kind?: unknown; id?: unknown; name?: unknown; bit?: unknown }
+        if ((permission.kind !== 'perm' && permission.kind !== 'priv')
+          || typeof permission.id !== 'string'
+          || !(permission.kind === 'perm' ? permission.id.startsWith('PERM.') : permission.id.startsWith('PRIV.'))
+          || typeof permission.bit !== 'string' || !/^0x[0-9a-f]+$/.test(permission.bit)
+          || typeof permission.name !== 'string' || !permission.name.trim()) {
+          fail('permission injection contains an invalid permission bit')
+        }
+      }
+      break
+    }
     case 'session/end-seed':
       // Unconstrained: an unbalanced seed legally puts it inside an open turn.
       break

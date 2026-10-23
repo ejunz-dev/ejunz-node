@@ -7,7 +7,7 @@
 import type { MessageId } from '@ejunz/llm/brand'
 import type { AttachmentIdType, ImageAttachmentLimits, ImageAttachmentRef, ImageMediaType } from '@ejunz/attachment'
 import type { ContentBlock } from '@ejunz/llm/types'
-import type { SessionEvent, SessionId } from '@ejunz/session/types'
+import type { SessionEvent, SessionId, SessionPermissionInjection } from '@ejunz/session/types'
 // The pure-type outlet: api/ is browser-importable, and the package root's
 // cordis Context merge (via ea-agent) must not enter client aggregates.
 import type { SessionProjectionMap } from '@ejunz/session-projection/types'
@@ -40,6 +40,14 @@ export interface SessionListMetadata {
   blank: boolean
   /** Latest source.kind=user message time in the checkpoint prefix. */
   lastPromptAt: number | null
+}
+
+export type SessionAddonPermissionInjection = Omit<SessionPermissionInjection, 'addonId'>
+
+export interface SessionAddonState {
+  addonId: string
+  enabled: boolean
+  permissionInjection?: SessionAddonPermissionInjection
 }
 
 declare module '@ejunz/llm' {
@@ -350,6 +358,8 @@ export interface SessionsApi {
     mode: 'queue' | 'steer'
     content: PromptContentPart[]
     clientTimeZone?: string
+    /** Host-computed initial add-on and permission-injection state, logged before the prompt's turn. */
+    addonSnapshot?: SessionAddonState[]
   }>):
   Promise<RpcResponse<{ accepted: true; command?: { kind: 'success'; text?: string } }>>
 
@@ -365,8 +375,11 @@ export interface SessionsApi {
     wakeup?: boolean
   }>): Promise<RpcResponse<{ accepted: true }>>
 
-  /** Records an addon mount or unmount in the session log, separate from context messages. */
-  addons(request: RpcRequest<{ sessionId: SessionId; addonId: string; enabled: boolean }>): Promise<RpcResponse<{ accepted: true; seq: number }>>
+  /** Records an add-on state change and its effective permission injection in the session log. */
+  addons(request: RpcRequest<{ sessionId: SessionId; addonId: string; enabled: boolean; permissionInjection?: SessionAddonPermissionInjection }>): Promise<RpcResponse<{ accepted: true; seq: number }>>
+
+  /** Records refreshed permission-injection snapshots without changing add-on mount state. */
+  permissionInjection(request: RpcRequest<{ sessionId: SessionId; injections: SessionPermissionInjection[] }>): Promise<RpcResponse<{ accepted: true; seq?: number }>>
 
   /** Reads one durable image after proving that this session's log references its id. */
   attachment(request: RpcRequest<{ sessionId: SessionId; attachmentId: AttachmentIdType }>):

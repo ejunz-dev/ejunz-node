@@ -23,6 +23,7 @@ import {
   sessionHistoryValueSchema,
   sessionInjectValueSchema,
   sessionAddonsValueSchema,
+  sessionPermissionInjectionValueSchema,
   sessionListValueSchema,
   sessionModelsValueSchema,
   sessionPromptValueSchema,
@@ -89,6 +90,7 @@ export interface IApiClient {
     command(payload: RequestPayload<'session.command'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.command'>>>
     inject(payload: RequestPayload<'session.inject'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.inject'>>>
     addons(payload: RequestPayload<'session.addons'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.addons'>>>
+    permissionInjection(payload: RequestPayload<'session.permissionInjection'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.permissionInjection'>>>
     attachment(payload: RequestPayload<'session.attachment'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.attachment'>>>
     updateQueue(payload: RequestPayload<'session.updateQueue'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.updateQueue'>>>
     cancel(payload: RequestPayload<'session.cancel'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'session.cancel'>>>
@@ -157,6 +159,7 @@ const UNARY_VALUE_SCHEMAS: { [K in keyof RpcMethodMap]: z.ZodType<Wire<ResponseV
   'session.command': sessionCommandValueSchema,
   'session.inject': sessionInjectValueSchema,
   'session.addons': sessionAddonsValueSchema,
+  'session.permissionInjection': sessionPermissionInjectionValueSchema,
   'session.models': sessionModelsValueSchema,
   'session.selectModel': sessionSelectModelValueSchema,
   'session.rename': sessionRenameValueSchema,
@@ -393,6 +396,7 @@ export abstract class AbstractApiClient implements IApiClient {
     command: (payload, signal) => this.callUnary('session.command', payload, signal),
     inject: (payload, signal) => this.callUnary('session.inject', payload, signal),
     addons: (payload, signal) => this.callUnary('session.addons', payload, signal),
+    permissionInjection: (payload, signal) => this.callUnary('session.permissionInjection', payload, signal),
     attachment: (payload, signal) => this.callUnary('session.attachment', payload, signal),
     updateQueue: (payload, signal) => this.callUnary('session.updateQueue', payload, signal),
     cancel: (payload, signal) => this.callUnary('session.cancel', payload, signal),

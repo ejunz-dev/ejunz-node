@@ -219,6 +219,20 @@ export interface RequestContext {
   contextWindow?: number
 }
 
+/** One user permission bit effective for tools owned by an add-on. */
+export interface SessionPermissionBit {
+  kind: 'perm' | 'priv'
+  id: string
+  name: string
+  bit: string
+}
+
+/** Log-only snapshot of the permission bits effective for one add-on. */
+export interface SessionPermissionInjection {
+  addonId: string
+  permissions: SessionPermissionBit[]
+}
+
 /**
  * Why a `request/header` snapshot was appended: `'initial'` — the log's first
  * header (a new conversation); `'resume'` — a loop instance's first request
@@ -296,9 +310,11 @@ export interface SessionEventMap {
   }
   /** Legacy plugin availability record retained for older session logs. */
   'session/plugins': { pluginId: string; enabled: boolean }
-  /** An addon was mounted or unmounted for this session. Log-only; never model context. */
-  'session/addons': { addonId: string; enabled: boolean }
-  /** Whole-list snapshot; latest write wins on replay. Log-only UI state; never derived history. */
+  /** Session add-on state. A snapshot records initial state together; single entries record later changes. Log-only; never model context. */
+  'session/addons': { addonId: string; enabled: boolean } | { snapshot: { addonId: string; enabled: boolean }[] }
+  /** Effective permission-group injection for one add-on. Log-only; never model context. */
+  'session/permission-injection': SessionPermissionInjection
+  /** Whole-list snapshot; latest write wins on replay. Log-only; never derived history. */
   'todo/write': { todos: TodoItem[] }
   /**
    * Full header for the next request, appended inside its step before dispatch.

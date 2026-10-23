@@ -9,12 +9,14 @@
  * @module
  */
 import type { Context } from '@ejunz/cordis'
-import type { ContentBlock } from '@ejunz/llm'
-import type { JsonValue, ToolDefinition } from '@ejunz/tools'
 import { HostToolClientService } from './client.ts'
-import type { HostArguments, HostCallContext, HostCatalog, HostToolClient, HostToolSpec } from './types.ts'
+import { registerHostTools } from './runtime-delegation.ts'
+import type { ToolRegistry } from './runtime-delegation.ts'
+import type { HostCatalog, HostToolClient } from './types.ts'
 export { createHostToolBridge, createHostToolClient } from './bridge.ts'
 export type { HostToolBridge } from './bridge.ts'
+export { registerHostTools } from './runtime-delegation.ts'
+export type { RegisterHostToolsOptions, ToolRegistry } from './runtime-delegation.ts'
 export { parseHostCatalog } from './catalog.ts'
 export type { HostArguments, HostCallContext, HostCatalog, HostToolClient, HostToolSpec, JsonValue } from './types.ts'
 export { HostToolClientService, attachHostToolClient } from './client.ts'
@@ -27,87 +29,6 @@ export const inject = ['tools']
  * never answers fails the load instead of blocking it.
  */
 const CATALOG_TIMEOUT_MS = 30_000
-
-/**
- * Render one host tool result.
- *
- * The result schema is unconstrained — `{}` — because the host's own result schemas are
- * the only accurate declaration of what it returns, and a copy here would drift from
- * them. The model receives the value as JSON text.
- * @param value - the lossless JSON value the host returned.
- * @returns the model-facing content for that value.
- */
-function renderResult(value: JsonValue): ContentBlock[] {
-  return [{ type: 'text', text: JSON.stringify(value ?? null) }]
-}
-
-/** The registration surface this package needs from the Agent tool registry. */
-export interface ToolRegistry {
-  /**
-   * Register one tool.
-   * @param definition - schema, execution, and presentation callbacks.
-   * @returns the exact disposer that unregisters the tool.
-   */
-  register(definition: ToolDefinition): () => void
-}
-
-/** Options for {@link registerHostTools}. */
-export interface RegisterHostToolsOptions {
-  /**
-   * Registry the tools register into. The registry resolves its layer from the context it
-   * was read through, so a registry read from an Agent scope publishes these tools to that
-   * Agent alone.
-   */
-  readonly registry: ToolRegistry
-  /** Client that executes the declared tools. */
-  readonly client: HostToolClient
-  /** Tools to register, as the host declared them. */
-  readonly catalog: HostCatalog
-}
-
-/**
- * Bind one declared tool to the client that executes it.
- * @param spec - the tool as the host declared it.
- * @param client - client that executes the declared tools.
- * @returns the definition the registry registers.
- */
-function toolDefinition(spec: HostToolSpec, client: HostToolClient): ToolDefinition {
-  return {
-    name: spec.name,
-    description: spec.description,
-    parameters: spec.inputSchema,
-    output: {
-      schema: {},
-      render: (_args, value) => renderResult(value),
-    },
-    execute: async (args, exec) => {
-      const input = typeof args === 'object' && args !== null && !Array.isArray(args)
-        ? args as HostArguments
-        : {}
-      if (exec.agent === undefined) throw new Error(`tool ${spec.name} requires an Agent session`)
-      const context: HostCallContext = { sessionId: exec.agent.session.id }
-      return await client.call(spec.name, input, context, exec.signal)
-    },
-  }
-}
-
-/**
- * Register a host-declared tool set in one registry.
- *
- * The caller supplies the catalog and the registry, so the registered names, descriptions,
- * and parameter schemas are exactly what the host declared, and the tools land in whatever
- * scope that registry was read through. Reading the registry from an Agent's own scope
- * therefore keeps the tools on that Agent: they are invisible to every other Agent in the
- * process and follow that Agent's disposal.
- * @param options - registry, client, and the declared tools.
- * @returns a disposer that removes every tool this call registered.
- */
-export function registerHostTools(options: RegisterHostToolsOptions): () => void {
-  const disposers = options.catalog.tools.map(spec => options.registry.register(toolDefinition(spec, options.client)))
-  return () => {
-    for (const dispose of disposers) dispose()
-  }
-}
 
 /** Options for {@link installHostTools}. */
 export interface InstallHostToolsOptions {
@@ -122,37 +43,110 @@ export interface InstallHostToolsOptions {
 }
 
 /**
- * Install the host's tools for one Agent.
- *
- * The host declares its catalog per domain, so the catalog is read for this Agent's own
- * session: a tool another domain owns is never declared here, and every other Agent in the
- * process stays without it.
- *
- * Both the tools and their prompt section are registered through values read from
- * `agentCtx`, whose scope is what a scoped registry resolves its layer from: the Agent's
- * model sees the host's guidance for its own session, and no other Agent's.
- * @param options - the Agent scope and the client.
- * @throws when the scope carries no Agent or no tool registry, or the host catalog round
- *   trip fails — Agent creation rolls back rather than publishing an Agent without its tools.
- */
-export async function installHostTools(options: InstallHostToolsOptions): Promise<void> {
-  const { agentCtx, client } = options
+/** Per-Agent host tool registrations and serialized catalog refresh state. */
+interface HostToolInstallation {
+  readonly client: HostToolClient
+  queue: Promise<void>
+  catalog?: HostCatalog
+  dispose?: () => void
+}
+
+const installations = new WeakMap<Context, HostToolInstallation>()
+
+function installCatalog(agentCtx: Context, client: HostToolClient, catalog: HostCatalog): () => void {
   const agent = agentCtx.agent
   if (agent === undefined) throw new Error('tool-host: host tools require an Agent scope')
   const registry = agentCtx.get('tools') as ToolRegistry | undefined
   if (registry === undefined) throw new Error('tool-host: the tool registry is unavailable in this Agent scope')
-  const sessionId = agent.session.id
-  const catalog = await client.catalog(AbortSignal.timeout(CATALOG_TIMEOUT_MS), { sessionId })
-  registerHostTools({ registry, client, catalog })
-  const guidance = catalog.guidance
-  if (guidance !== undefined && guidance.length > 0) {
-    agentCtx.get('systemPrompt')?.context({
-      name: 'host-tools',
-      order: 120,
-      text: () => guidance,
-    })
+  const disposeTools = registerHostTools({ registry, client, catalog, scope: agent })
+  try {
+    const guidance = catalog.guidance
+    const disposeContext = guidance !== undefined && guidance.length > 0
+      ? agentCtx.get('systemPrompt')?.context({
+        name: 'host-tools',
+        order: 120,
+        text: () => guidance,
+      })
+      : undefined
+    return () => {
+      disposeContext?.()
+      disposeTools()
+    }
+  } catch (error) {
+    disposeTools()
+    throw error
   }
-  agentCtx.logger.info(`tool-host: installed ${catalog.tools.length} host tool(s) for session ${sessionId}`)
+}
+
+/** Refresh the tools and guidance already installed for one live Agent. */
+export async function refreshHostTools(agentCtx: Context): Promise<void> {
+  const installation = installations.get(agentCtx)
+  if (installation === undefined) return
+  const update = installation.queue.then(async () => {
+    const agent = agentCtx.agent
+    if (agent === undefined) throw new Error('tool-host: host tools require an Agent scope')
+    const sessionId = agent.session.id
+    const previousCatalog = installation.catalog
+    const disposePrevious = installation.dispose
+    disposePrevious?.()
+    delete installation.dispose
+    try {
+      const registry = agentCtx.get('tools') as (ToolRegistry & {
+        schemas(scope?: object): { name: string; description: string; parameters: Record<string, unknown> }[]
+      }) | undefined
+      if (registry === undefined) throw new Error('tool-host: the tool registry is unavailable in this Agent scope')
+      const runtimeTools = registry.schemas(agent).map(({ name, description, parameters }) => ({
+        name,
+        description,
+        inputSchema: parameters,
+      }))
+      const catalog = await installation.client.catalog(AbortSignal.timeout(CATALOG_TIMEOUT_MS), { sessionId, runtimeTools })
+      if (previousCatalog !== undefined && JSON.stringify(previousCatalog) === JSON.stringify(catalog)) {
+        installation.dispose = installCatalog(agentCtx, installation.client, previousCatalog)
+        return
+      }
+      installation.dispose = installCatalog(agentCtx, installation.client, catalog)
+      installation.catalog = catalog
+      agentCtx.logger.info(`tool-host: refreshed ${catalog.tools.length} host tool(s) for session ${sessionId}`)
+    } catch (error) {
+      if (previousCatalog !== undefined) {
+        installation.dispose = installCatalog(agentCtx, installation.client, previousCatalog)
+        installation.catalog = previousCatalog
+      } else {
+        delete installation.dispose
+        delete installation.catalog
+      }
+      throw error
+    }
+  })
+  installation.queue = update.then(() => undefined, () => undefined)
+  await update
+}
+
+/**
+ * Install the host catalog for one Agent and retain its client for live refreshes.
+ *
+ * The host resolves the Agent's own session id to select the domain-specific catalog. Tools
+ * and guidance are registered in that Agent's scope alone.
+ * @param options - the Agent scope and the client.
+ * @throws when the scope carries no Agent or tool registry, or the host catalog round trip
+ *   fails — Agent creation rolls back rather than publishing an Agent without its tools.
+ */
+export async function installHostTools(options: InstallHostToolsOptions): Promise<void> {
+  const { agentCtx, client } = options
+  if (agentCtx.agent === undefined) throw new Error('tool-host: host tools require an Agent scope')
+  const existing = installations.get(agentCtx)
+  if (existing !== undefined && existing.client !== client) {
+    throw new Error('tool-host: a different client is already installed for this Agent')
+  }
+  const installation = existing ?? { client, queue: Promise.resolve() }
+  installations.set(agentCtx, installation)
+  try {
+    await refreshHostTools(agentCtx)
+  } catch (error) {
+    if (existing === undefined) installations.delete(agentCtx)
+    throw error
+  }
 }
 
 /**

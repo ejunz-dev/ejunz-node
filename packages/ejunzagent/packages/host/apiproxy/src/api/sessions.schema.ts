@@ -274,12 +274,27 @@ export const promptContentPartSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('image'), mediaType: imageMediaTypeSchema, data: z.string(), name: z.string().optional() }),
 ])
 
-/** session.prompt request payload, including optional browser-local request provenance. */
+const sessionAddonPermissionInjectionSchema = z.object({
+  permissions: z.array(z.object({
+    kind: z.union([z.literal('perm'), z.literal('priv')]),
+    id: z.string().min(1),
+    name: z.string().min(1),
+    bit: z.string().regex(/^0x[0-9a-f]+$/),
+  })).max(256),
+})
+const sessionAddonStateSchema = z.object({
+  addonId: z.string().min(1),
+  enabled: z.boolean(),
+  permissionInjection: sessionAddonPermissionInjectionSchema.optional(),
+})
+
+/** session.prompt request payload, including browser-local request provenance and initial add-on permission snapshots. */
 export const sessionPromptRequestSchema = z.object({
   sessionId: sessionIdSchema,
   mode: z.union([z.literal('queue'), z.literal('steer')]),
   content: z.array(promptContentPartSchema),
   clientTimeZone: z.string().optional(),
+  addonSnapshot: z.array(sessionAddonStateSchema).max(128).optional(),
 }) as unknown as z.ZodType<RequestPayload<'session.prompt'>>
 
 /** session.prompt response value (the command slot appears only when the prompt dispatched a slash command). */
@@ -319,11 +334,12 @@ export const sessionInjectValueSchema = z.object({
   accepted: z.literal(true),
 }) satisfies z.ZodType<Wire<ResponseValue<'session.inject'>>>
 
-/** session.addons request payload: record an addon mount without adding model context. */
+/** session.addons request payload: record one add-on state change without adding model context. */
 export const sessionAddonsRequestSchema = z.object({
   sessionId: sessionIdSchema,
   addonId: z.string().min(1),
   enabled: z.boolean(),
+  permissionInjection: sessionAddonPermissionInjectionSchema.optional(),
 }) satisfies z.ZodType<Wire<RequestPayload<'session.addons'>>>
 
 /** session.addons response value. */
@@ -331,6 +347,19 @@ export const sessionAddonsValueSchema = z.object({
   accepted: z.literal(true),
   seq: z.number().int().nonnegative(),
 }) satisfies z.ZodType<Wire<ResponseValue<'session.addons'>>>
+
+export const sessionPermissionInjectionRequestSchema = z.object({
+  sessionId: sessionIdSchema,
+  injections: z.array(z.object({
+    addonId: z.string().min(1),
+    ...sessionAddonPermissionInjectionSchema.shape,
+  })).max(128),
+}) satisfies z.ZodType<Wire<RequestPayload<'session.permissionInjection'>>>
+
+export const sessionPermissionInjectionValueSchema = z.object({
+  accepted: z.literal(true),
+  seq: z.number().int().nonnegative().optional(),
+}) satisfies z.ZodType<Wire<ResponseValue<'session.permissionInjection'>>>
 
 /** Opaque attachment id after string-shape validation. */
 export const attachmentIdSchema = z.string().min(1) as unknown as z.ZodType<AttachmentIdType>

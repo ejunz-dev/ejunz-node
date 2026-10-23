@@ -14,6 +14,8 @@ export interface HostToolSpec {
   readonly description: string
   /** Parameter JSON Schema, as `ToolSchema.parameters` holds it. */
   readonly inputSchema: Record<string, unknown>
+  /** Whether the host call returns a marker for the captured native Agent tool. */
+  readonly runtimeDelegation?: boolean
 }
 
 /** The catalog one host round trip returns. */
@@ -36,6 +38,10 @@ export interface HostCatalog {
  */
 export interface HostCallContext {
   readonly sessionId: string
+  /** Native tools visible to the calling Agent scope, used to build its host catalog. */
+  readonly runtimeTools?: readonly HostToolSpec[]
+  /** Marks a call that only asks the host to authorize runtime delegation. */
+  readonly runtimeDelegation?: boolean
 }
 
 /** Arguments of one host tool call, as the model supplied them. */

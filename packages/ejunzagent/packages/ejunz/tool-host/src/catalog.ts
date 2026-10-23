@@ -38,15 +38,22 @@ export function parseHostCatalog(value: JsonValue | undefined): HostCatalog {
   const guidance = payload.guidance
   if (guidance !== undefined && typeof guidance !== 'string') invalid('guidance must be a string')
 
+  const names = new Set<string>()
   const parsed: HostToolSpec[] = tools.map((entry, index) => {
     const spec = record(entry, `tools[${index}]`)
-    const { name, description } = spec
+    const { name, description, runtimeDelegation } = spec
     if (typeof name !== 'string' || name.length === 0) invalid(`tools[${index}].name must be a non-empty string`)
+    if (names.has(name)) invalid(`tools[${index}].name is duplicated`)
+    names.add(name)
     if (typeof description !== 'string') invalid(`tools[${index}].description must be a string`)
+    if (runtimeDelegation !== undefined && typeof runtimeDelegation !== 'boolean') {
+      invalid(`tools[${index}].runtimeDelegation must be a boolean`)
+    }
     return {
       name,
       description,
       inputSchema: record(spec.inputSchema, `tools[${index}].inputSchema`),
+      ...(runtimeDelegation === true ? { runtimeDelegation: true } : {}),
     }
   })
 

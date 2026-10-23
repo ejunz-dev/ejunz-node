@@ -152,7 +152,7 @@ export class EdgeAgentRuntime {
         if (session.events.length > maxStoredEvents) session.events.splice(0, session.events.length - maxStoredEvents);
         session.updatedAt = Date.now();
         this.persist();
-        const message = { type: 'session/event', sessionId: session.sessionId, event };
+        const message = { type: 'session/event', sessionId: session.sessionId, seq, event };
         for (const subscriber of this.subscribers) {
             try { subscriber(message); } catch {}
         }

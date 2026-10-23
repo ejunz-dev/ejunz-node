@@ -9,6 +9,8 @@ import Dashboard from './pages/Dashboard';
 import Devices from './pages/Devices';
 import Nodes from './pages/Nodes';
 import Upstream from './pages/Upstream';
+import Chat from './pages/Chat';
+import Config from './pages/Config';
 
 function DefaultLayout() {
   return (
@@ -37,6 +39,8 @@ export default function App() {
           <Route path="devices" element={<Devices />} />
           <Route path="nodes" element={<Nodes />} />
           <Route path="upstream" element={<Upstream />} />
+          <Route path="chat" element={<Chat />} />
+          <Route path="config" element={<Config />} />
           <Route path="auth" element={<Auth />} />
         </Route>
       </Routes>

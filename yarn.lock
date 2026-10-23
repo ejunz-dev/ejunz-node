@@ -199,9 +199,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@ejunz/framework@npm:0.4.4":
-  version: 0.4.4
-  resolution: "@ejunz/framework@npm:0.4.4"
+"@ejunz/framework@npm:0.7.0":
+  version: 0.7.0
+  resolution: "@ejunz/framework@npm:0.7.0"
   dependencies:
     "@ejunz/utils": "workspace:^"
     "@koa/router": "npm:^14.0.0"
@@ -218,7 +218,7 @@ __metadata:
     ws: "npm:^8.18.3"
   peerDependencies:
     cordis: "*"
-  checksum: 10/c9d10c7a2fe08e355e39fa8e168d676f6e7d3027c7c51d28e97c9f85ce7e1249808aec4c14cbfc9b3ab987c56c83617bb40aea166dcea94cd9e8da2ed0525d68
+  checksum: 10/1e01b3f60d373a7db5b2617661264dd16a2cc188f5ebcd6c30c9f7077aac4f5ab0b956c37c8256f4c301cf38c2c1958463f30c1fd5aee6bf03839e16eaa301da
   languageName: node
   linkType: hard
 
@@ -261,7 +261,7 @@ __metadata:
   dependencies:
     "@cordisjs/plugin-logger": "npm:^1.0.1"
     "@cordisjs/plugin-timer": "npm:^1.1.1"
-    "@ejunz/framework": "npm:0.4.4"
+    "@ejunz/framework": "npm:0.7.0"
     "@ejunz/protocol": "workspace:*"
     "@ejunz/utils": "npm:^0.4.1"
     "@types/fs-extra": "npm:^11.0.4"

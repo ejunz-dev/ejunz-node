@@ -14,7 +14,7 @@
   "dependencies": {
     "@cordisjs/plugin-logger": "^1.0.1",
     "@cordisjs/plugin-timer": "^1.1.1",
-    "@ejunz/framework": "0.7.0",
+    "@ejunz/framework": "0.8.0",
     "@ejunz/protocol": "workspace:*",
     "@ejunz/utils": "^0.4.1",
     "aedes": "^0.51.2",

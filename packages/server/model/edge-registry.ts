@@ -11,7 +11,6 @@ export type EdgeNodeRecord = {
     host: string;
     port: number;
     status: EdgeNodeStatus;
-    tools: any[];
     lastSeen: number;
     authorizedAt?: number;
     revokedAt?: number;
@@ -29,12 +28,6 @@ type EnvelopeListener = (node: EdgeNodeRecord, envelope: EdgeEnvelope) => void;
 class EdgeRegistry {
     private readonly nodes = new Map<string, EdgeNodeRecord>();
     private readonly listeners = new Set<EnvelopeListener>();
-    private readonly pendingRequests = new Map<string, {
-        nodeId: string;
-        resolve: (value: any) => void;
-        reject: (reason?: any) => void;
-        timer: NodeJS.Timeout;
-    }>();
     private loaded = false;
 
     private storagePath() {
@@ -73,7 +66,6 @@ class EdgeRegistry {
             host: 'unknown',
             port: 0,
             status: 'offline',
-            tools: [],
             lastSeen: Date.now(),
             deviceStates: {},
             deviceStateUpdatedAt: {},
@@ -123,7 +115,6 @@ class EdgeRegistry {
                     port: record.port,
                     status: record.status,
                     connected: Boolean(record.connection),
-                    tools: clone(record.tools || []),
                     lastSeen: record.lastSeen,
                     authorizedAt: record.authorizedAt,
                     revokedAt: record.revokedAt,
@@ -211,13 +202,6 @@ class EdgeRegistry {
         return record;
     }
 
-    updateTools(nodeId: string, tools: any[]) {
-        const record = this.node(nodeId, { tools: Array.isArray(tools) ? tools : [], lastSeen: Date.now() });
-        if (record.status !== 'revoked') record.status = record.connection ? 'online' : 'offline';
-        this.persist();
-        return record;
-    }
-
     send(nodeId: string, envelope: EdgeEnvelope) {
         const record = this.get(nodeId);
         if (!record?.connection) return false;
@@ -227,23 +211,6 @@ class EdgeRegistry {
         } catch {
             return false;
         }
-    }
-
-    request(nodeId: string, envelope: EdgeEnvelope, timeoutMs = 15000): Promise<any> {
-        const traceId = envelope.traceId || generateTraceId('request', nodeId);
-        const request = { ...envelope, traceId, nodeId };
-        return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => {
-                this.pendingRequests.delete(traceId);
-                reject(new Error(`Node ${nodeId} request timed out`));
-            }, timeoutMs);
-            this.pendingRequests.set(traceId, { nodeId, resolve, reject, timer });
-            if (!this.send(nodeId, request)) {
-                clearTimeout(timer);
-                this.pendingRequests.delete(traceId);
-                reject(new Error(`Node ${nodeId} is not connected`));
-            }
-        });
     }
 
     onEnvelope(listener: EnvelopeListener) {
@@ -259,18 +226,19 @@ class EdgeRegistry {
             if (match) {
                 record.deviceStates ||= {};
                 record.deviceStateUpdatedAt ||= {};
-                record.deviceStates[match[1]] = envelope.payload || {};
+                const previousState = record.deviceStates[match[1]];
+                const nextState = envelope.payload;
+                if (
+                    previousState && typeof previousState === 'object' && !Array.isArray(previousState)
+                    && nextState && typeof nextState === 'object' && !Array.isArray(nextState)
+                ) {
+                    record.deviceStates[match[1]] = { ...previousState, ...nextState };
+                } else {
+                    record.deviceStates[match[1]] = nextState || {};
+                }
                 record.deviceStateUpdatedAt[match[1]] = now;
                 this.persist();
             }
-        }
-        const pending = envelope.traceId ? this.pendingRequests.get(envelope.traceId) : undefined;
-        if (pending && pending.nodeId === nodeId) {
-            clearTimeout(pending.timer);
-            this.pendingRequests.delete(envelope.traceId!);
-            const payload = envelope.payload || {};
-            if (payload.error) pending.reject(new Error(payload.error.message || 'Node request failed'));
-            else pending.resolve(payload.result ?? payload);
         }
         for (const listener of this.listeners) {
             try { listener(record, envelope); } catch {}

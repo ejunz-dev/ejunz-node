@@ -9,23 +9,13 @@ import { EdgeEnvelope, prepareEnvelope } from '@ejunz/protocol';
 const logger = new Logger('edge-node');
 
 function getNodeId(message: any) {
-    if (message?.type === 'init') return String(message.nodeId || '');
-    const payload = message?.payload;
-    return String(
-        message?.nodeId
-        || payload?.params?.nodeId
-        || payload?.params?.node?.nodeId
-        || message?.meta?.nodeId
-        || '',
-    );
+    return String(message?.nodeId || message?.meta?.nodeId || '');
 }
 
 function getMetadata(message: any) {
-    const payload = message?.payload || {};
-    const params = payload.params || {};
     return {
-        host: String(params.host || message?.host || 'unknown'),
-        port: Number(params.port || message?.port || 0),
+        host: String(message?.host || 'unknown'),
+        port: Number(message?.port || 0),
     };
 }
 
@@ -121,37 +111,9 @@ export class EdgeNodeConnectionHandler extends ConnectionHandler<Context> {
             if (!message || typeof message !== 'object') return;
             if (!this.ensureAuthenticated(message)) return;
 
-            if (message.type === 'init') edgeRegistry.updateTools(this.nodeId, message.tools || []);
-            const envelope: EdgeEnvelope = message.protocol
-                ? message
-                : message.jsonrpc
-                    ? { protocol: 'mcp', action: 'jsonrpc', payload: message }
-                    : message.type === 'init'
-                        ? {
-                            protocol: 'mcp',
-                            action: 'jsonrpc',
-                            payload: {
-                                jsonrpc: '2.0',
-                                method: 'notifications/initialized',
-                                params: { nodeId: this.nodeId, host: message.host, port: message.port },
-                            },
-                        }
-                        : message.type === 'tools-update'
-                            ? {
-                                protocol: 'mcp',
-                                action: 'jsonrpc',
-                                payload: {
-                                    jsonrpc: '2.0',
-                                    method: 'notifications/tools-update',
-                                    params: { tools: message.tools || [] },
-                                },
-                            }
-                            : message;
-            const prepared = prepareEnvelope(envelope, 'inbound', this.nodeId);
-            const payload = prepared.payload || {};
-            if (payload.method === 'notifications/tools-update') {
-                edgeRegistry.updateTools(this.nodeId, payload.params?.tools || []);
-            }
+            if (message.type === 'init') return;
+            if (!message.protocol) return;
+            const prepared = prepareEnvelope(message, 'inbound', this.nodeId);
             edgeRegistry.receive(this.nodeId, prepared);
         } catch (e) {
             logger.error('Failed to process node %s message: %s', this.nodeId || '?', (e as Error).message);

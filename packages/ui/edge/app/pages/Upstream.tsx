@@ -58,7 +58,7 @@ export default function Upstream() {
           <Group justify="space-between">
             <div>
               <Text fw={500}>Ejunz 上游 WebSocket</Text>
-              <Text size="sm" c="dimmed">Node 的状态和工具会通过 Edge 转发到这里。</Text>
+              <Text size="sm" c="dimmed">Node 的 MQTT 状态和设备事件会通过 Edge 转发到这里。</Text>
             </div>
             <Switch
               label={config.enabled ? '已启用' : '已禁用'}
@@ -68,7 +68,7 @@ export default function Upstream() {
           </Group>
           <TextInput
             label="WebSocket Endpoint"
-            description="例如 wss://example.com/mcp/ws"
+            description="填写上游 Edge WebSocket 服务提供的地址。"
             placeholder="wss://..."
             value={endpoint}
             onChange={(event) => setEndpoint(event.currentTarget.value)}

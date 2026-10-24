@@ -72,7 +72,6 @@ export default function Nodes() {
                 <Table.Th>Node ID</Table.Th>
                 <Table.Th>状态</Table.Th>
                 <Table.Th>地址</Table.Th>
-                <Table.Th>MCP 工具</Table.Th>
                 <Table.Th>最近在线</Table.Th>
                 <Table.Th>操作</Table.Th>
               </Table.Tr>
@@ -83,7 +82,6 @@ export default function Nodes() {
                   <Table.Td><Text fw={500}>{node.nodeId}</Text></Table.Td>
                   <Table.Td><Badge color={statusColor(node.status)}>{statusLabel(node.status)}</Badge></Table.Td>
                   <Table.Td>{node.host}:{node.port || '-'}</Table.Td>
-                  <Table.Td>{node.tools?.length || 0}</Table.Td>
                   <Table.Td>{node.lastSeen ? new Date(node.lastSeen).toLocaleString() : '-'}</Table.Td>
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">

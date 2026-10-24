@@ -3,8 +3,8 @@ import { Handler } from '@ejunz/framework';
 import { Context } from 'cordis';
 import { config, isEdgeMode, saveConfig } from '../config';
 import { edgeRegistry } from '../model/edge-registry';
+import { getCurrentDeviceState, sendNodeDeviceControl } from '../tools/edge';
 import { EDGE_WS_MAX_MESSAGE_BYTES, maskEndpoint, parseEdgeWsMessage, protocolMessage } from '@ejunz/protocol';
-import { callNodeMcp, controlEdgeDevice } from '../tools/edge-device-control';
 import { getEdgeAuthConfig, isEdgeAdminAuthorized, requireEdgeAdmin as requireAdmin } from './edge-auth';
 
 class EdgeAuthConfigHandler extends Handler<Context> {
@@ -64,29 +64,7 @@ class EdgeNodesHandler extends Handler<Context> {
     }
 }
 
-function getCurrentDeviceState(node: any, deviceId: string) {
-    const states = node?.deviceStates || {};
-    const direct = states[deviceId];
-    const read = (value: any) => {
-        if (!value || typeof value !== 'object') return undefined;
-        if (value.state === 'ON' || value.state === 'OFF') return value.state;
-        if (value.power === 'ON' || value.power === 'OFF') return value.power;
-        return undefined;
-    };
-    const directState = read(direct);
-    if (directState) return directState;
-    const endpoint = String(deviceId).match(/^(.+)_(l\d+)$/);
-    if (endpoint) {
-        const baseState = states[endpoint[1]];
-        if (baseState?.[`state_${endpoint[2]}`] === 'ON' || baseState?.[`state_${endpoint[2]}`] === 'OFF') {
-            return baseState[`state_${endpoint[2]}`];
-        }
-        if (baseState?.state === 'ON' || baseState?.state === 'OFF') return baseState.state;
-    }
-    return undefined;
-}
-
-class EdgeNodeToolsHandler extends Handler<Context> {
+class EdgeNodeDevicesHandler extends Handler<Context> {
     async get() {
         if (!requireAdmin(this)) return;
 
@@ -97,62 +75,34 @@ class EdgeNodeToolsHandler extends Handler<Context> {
             this.response.body = { error: 'node not found' };
             return;
         }
-        this.response.body = { nodeId, tools: node.tools || [] };
-    }
-}
-
-class EdgeNodeDevicesHandler extends Handler<Context> {
-    async get() {
-        if (!requireAdmin(this)) return;
-
-        const nodeId = String((this.request as any).params?.nodeId || '');
-        if (!edgeRegistry.get(nodeId)) {
-            this.response.status = 404;
-            this.response.body = { error: 'node not found' };
-            return;
+        const states = node.deviceStates || {};
+        const devices = new Map<string, any>();
+        const addDevice = (deviceId: string) => {
+            const currentState = getCurrentDeviceState(node, deviceId);
+            if (currentState !== 'ON' && currentState !== 'OFF') return;
+            devices.set(deviceId, {
+                deviceId,
+                friendlyName: deviceId,
+                model: '未知型号',
+                vendor: '未知厂商',
+                supportsOnOff: true,
+                online: Boolean(node.connected || node.status === 'online'),
+                currentState,
+            });
+        };
+        for (const [deviceId, state] of Object.entries(states)) {
+            if (deviceId.toLowerCase() === 'coordinator') continue;
+            const endpoints = state && typeof state === 'object'
+                ? Object.keys(state).filter((key) => /^state_l\d+$/.test(key))
+                : [];
+            if (endpoints.length) {
+                for (const key of endpoints) addDevice(`${deviceId}_${key.slice('state_'.length)}`);
+            } else {
+                addDevice(deviceId);
+            }
         }
-        try {
-            const result = await callNodeMcp(nodeId, 'zigbee_list_devices');
-            const devices = Array.isArray(result?.devices) ? result.devices : [];
-            for (const device of devices) {
-                if (device.currentState === 'ON' || device.currentState === 'OFF') continue;
-                try {
-                    const status = await callNodeMcp(nodeId, 'zigbee_get_device_status', { deviceId: device.deviceId });
-                    if (status?.currentState === 'ON' || status?.currentState === 'OFF') device.currentState = status.currentState;
-                } catch {
-                    // The list remains usable when a device does not expose a readable state.
-                }
-            }
-            const known = new Set(devices.map((device: any) => String(device.deviceId)));
-            const node = edgeRegistry.get(nodeId);
-            for (const tool of node?.tools || []) {
-                const metadata = tool?.metadata || {};
-                if (metadata.category !== 'zigbee-switch' || !metadata.deviceId) continue;
-                const deviceId = String(metadata.deviceId);
-                if (known.has(deviceId)) continue;
-                known.add(deviceId);
-                devices.push({
-                    deviceId,
-                    friendlyName: metadata.friendlyName || deviceId,
-                    model: metadata.model || '未知型号',
-                    vendor: metadata.vendor || '未知厂商',
-                    type: '端点',
-                    supportsOnOff: true,
-                    endpoint: metadata.endpoint,
-                    currentState: devices.find((device: any) => String(device.deviceId) === String(metadata.originalDeviceId))?.state?.[`state_${metadata.endpoint}`]
-                        || devices.find((device: any) => String(device.deviceId) === String(metadata.originalDeviceId))?.currentState
-                        || null,
-                });
-            }
-            for (const device of devices) {
-                const currentState = getCurrentDeviceState(node, String(device.deviceId || ''));
-                if (currentState) device.currentState = currentState;
-            }
-            this.response.body = { ...result, count: devices.length, devices };
-        } catch (e) {
-            this.response.status = 502;
-            this.response.body = { error: (e as Error).message };
-        }
+        const deviceList = Array.from(devices.values()).sort((a, b) => a.deviceId.localeCompare(b.deviceId));
+        this.response.body = { count: deviceList.length, devices: deviceList };
     }
 }
 
@@ -170,8 +120,13 @@ class EdgeNodeDeviceControlHandler extends Handler<Context> {
         const body = this.request.body || {};
         const deviceId = String(body.deviceId || '');
         const state = String(body.state || '').toUpperCase();
+        if (!deviceId) {
+            this.response.status = 400;
+            this.response.body = { error: 'deviceId is required' };
+            return;
+        }
         try {
-            this.response.body = await controlEdgeDevice(nodeId, deviceId, state);
+            this.response.body = sendNodeDeviceControl(nodeId, deviceId, state);
         } catch (e) {
             this.response.status = 502;
             this.response.body = { error: (e as Error).message };
@@ -261,7 +216,6 @@ export function apply(ctx: Context) {
     ctx.Route('edge-auth-config', '/api/edge/auth-config', EdgeAuthConfigHandler);
     ctx.Route('edge-status', '/api/edge/status', EdgeStatusHandler);
     ctx.Route('edge-nodes', '/api/edge/nodes', EdgeNodesHandler);
-    ctx.Route('edge-node-tools', '/api/edge/nodes/:nodeId/tools', EdgeNodeToolsHandler);
     ctx.Route('edge-node-devices', '/api/edge/nodes/:nodeId/devices', EdgeNodeDevicesHandler);
     ctx.Route('edge-node-device-control', '/api/edge/nodes/:nodeId/devices/control', EdgeNodeDeviceControlHandler);
     ctx.Route('edge-authorize', '/api/edge/nodes/:nodeId/authorize', EdgeAuthorizeHandler);
@@ -397,9 +351,26 @@ export function apply(ctx: Context) {
                         case 'control':
                             if ((!nodeIds?.length || nodeIds.includes(message.nodeId))
                                 && (!deviceIds?.length || deviceIds.includes(message.deviceId))) {
-                                controlEdgeDevice(message.nodeId, message.deviceId, message.state)
-                                    .then((result) => send(protocolMessage('control_result', { requestId: message.requestId, ok: true, nodeId: message.nodeId, deviceId: message.deviceId, state: message.state, result })))
-                                    .catch((error) => send(protocolMessage('control_result', { requestId: message.requestId, ok: false, nodeId: message.nodeId, deviceId: message.deviceId, error: (error as Error).message })));
+                                try {
+                                    const state = String(message.state || '').toUpperCase();
+                                    const result = sendNodeDeviceControl(String(message.nodeId), String(message.deviceId), state);
+                                    send(protocolMessage('control_result', {
+                                        requestId: message.requestId,
+                                        ok: true,
+                                        nodeId: message.nodeId,
+                                        deviceId: message.deviceId,
+                                        state,
+                                        result,
+                                    }));
+                                } catch (error) {
+                                    send(protocolMessage('control_result', {
+                                        requestId: message.requestId,
+                                        ok: false,
+                                        nodeId: message.nodeId,
+                                        deviceId: message.deviceId,
+                                        error: (error as Error).message,
+                                    }));
+                                }
                             } else {
                                 sendError('control_not_subscribed', 'target is not included in the current subscription', message.requestId);
                             }
@@ -425,6 +396,7 @@ export function apply(ctx: Context) {
                 clearInterval(heartbeat);
                 try { unsub(); } catch {}
             });
+            socket.resume();
         });
         if ((config as any).enableSSE !== false) {
             server.router.get('/api/edge/ws', (ctx) => {

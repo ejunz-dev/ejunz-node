@@ -1,12 +1,9 @@
 // @ts-nocheck
-import crypto from 'node:crypto';
 import os from 'node:os';
 import { Context } from 'cordis';
 import { Logger } from '@ejunz/utils';
 import { config, saveConfig } from '../config';
 import { endpointWithToken } from '@ejunz/protocol';
-import { listNodeTools, setDynamicNodeTools, NodeToolRegistryEntry, NodeToolDefinition, callNodeTool } from '../tools/node';
-import { callZigbeeControlTool } from '../tools/nodeZigbee';
 
 const logger = new Logger('node-client');
 
@@ -24,8 +21,6 @@ type EdgeEnvelope = {
     meta?: Record<string, any>;
 };
 
-type ToolUpdateListener = (tools: NodeToolDefinition[]) => void;
-
 interface EdgeBridgeHandle {
     send: (envelope: EdgeEnvelope) => void;
     dispose: () => void;
@@ -36,8 +31,6 @@ const EDGE_EVENT_OUTBOUND = 'edge/ws/outbound';
 
 let cachedNodeId: string | null = null;
 let edgeBridgeHandle: EdgeBridgeHandle | null = null;
-const toolUpdateListeners = new Set<ToolUpdateListener>();
-let cachedAdvertisedTools: NodeToolDefinition[] = [];
 // 防重复处理：记录最近处理的命令（基于 traceId 或 channel+payload）
 const processedCommands = new Map<string, number>();
 
@@ -77,41 +70,6 @@ function sendEdgeEnvelope(envelope: EdgeEnvelope) {
         return;
     }
     edgeBridgeHandle.send(envelope);
-}
-
-function notifyNodeToolsUpdated(tools: NodeToolDefinition[]) {
-    cachedAdvertisedTools = tools;
-    for (const listener of toolUpdateListeners) {
-        try {
-            listener(tools);
-        } catch (e) {
-            logger.warn('tools listener failed: %s', (e as Error).message);
-        }
-    }
-}
-
-function onNodeToolsUpdated(listener: ToolUpdateListener): () => void {
-    toolUpdateListeners.add(listener);
-    if (cachedAdvertisedTools.length) {
-        try { listener(cachedAdvertisedTools); } catch {}
-    }
-    return () => {
-        toolUpdateListeners.delete(listener);
-    };
-}
-
-function getAdvertisedToolsSnapshot(): NodeToolDefinition[] {
-    if (cachedAdvertisedTools.length) return cachedAdvertisedTools;
-    const nodeId = getResolvedNodeId();
-    const advertiseHost = resolveAdvertisedHost();
-    const advertisePort = resolveAdvertisedPort();
-    cachedAdvertisedTools = decorateToolsForAdvertise(
-        listNodeTools(true) as NodeToolDefinition[],
-        nodeId,
-        advertiseHost,
-        advertisePort,
-    );
-    return cachedAdvertisedTools;
 }
 
 // 连接到本地MQTT Broker（用于zigbee2mqtt控制，默认 localhost:1883）
@@ -535,65 +493,6 @@ async function handleInboundMqttEnvelope(ctx: Context | undefined, envelope: Edg
     }
 }
 
-async function handleInboundMcpEnvelope(ctx: Context | undefined, envelope: EdgeEnvelope) {
-    if (!ctx) return;
-    const payload = envelope.payload || {};
-    if (typeof payload !== 'object') return;
-    const id = payload.id ?? null;
-    const method = payload.method;
-    const reply = (body: any) => {
-        sendEdgeEnvelope({
-            protocol: 'mcp',
-            action: 'jsonrpc',
-            traceId: envelope.traceId,
-            payload: {
-                jsonrpc: '2.0',
-                id,
-                ...body,
-            },
-        });
-    };
-
-    if (!method) {
-        logger.debug?.('收到 MCP 响应: %o', payload);
-        return;
-    }
-
-    try {
-        if (method === 'initialize') {
-            reply({
-                result: {
-                    protocolVersion: '2024-11-05',
-                    capabilities: { tools: {}, resources: {} },
-                    serverInfo: { name: `ejunz-node-${getResolvedNodeId()}`, version: '1.0.0' },
-                },
-            });
-            return;
-        }
-
-        if (method === 'tools/list') {
-            reply({ result: { tools: getAdvertisedToolsSnapshot() } });
-            return;
-        }
-
-        if (method === 'tools/call') {
-            const { name, arguments: args } = payload.params || {};
-            const result = await callNodeTool(ctx, { name, arguments: args });
-            reply({ result });
-            return;
-        }
-
-        if (method === 'notifications/refresh-tools') {
-            reply({ result: { ok: 1 } });
-            return;
-        }
-
-        reply({ error: { code: -32601, message: `Unknown MCP method: ${method}` } });
-    } catch (e) {
-        reply({ error: { code: -32603, message: (e as Error).message } });
-    }
-}
-
 function startEdgeEnvelopeBridge(ctx?: Context) {
     if (!ctx) return () => {};
     if (!resolveEdgeEndpoint()) {
@@ -617,7 +516,6 @@ function startEdgeEnvelopeBridge(ctx?: Context) {
     let heartbeatInterval: NodeJS.Timeout | null = null;
     const queue: EdgeEnvelope[] = [];
     const maxQueueSize = 200;
-    const listeners: Array<() => void> = [];
 
     const flushQueue = () => {
         if (!ws || ws.readyState !== WS.OPEN) return;
@@ -651,41 +549,17 @@ function startEdgeEnvelopeBridge(ctx?: Context) {
     };
 
     const sendHandshake = () => {
-        enqueueEnvelope({
-            protocol: 'mcp',
-            action: 'jsonrpc',
-            payload: {
-                jsonrpc: '2.0',
-                method: 'notifications/initialized',
-                params: {
-                    nodeId: getResolvedNodeId(),
-                    host: resolveAdvertisedHost(),
-                    port: resolveAdvertisedPort(),
-                    toolsHash: computeToolsSignature(getAdvertisedToolsSnapshot()),
-                    timestamp: Date.now(),
-                },
-                id: generateTraceId('init'),
-            },
-        });
-    };
-
-    const sendToolsNotification = (reason: string, tools?: NodeToolDefinition[]) => {
-        const payloadTools = tools || getAdvertisedToolsSnapshot();
-        enqueueEnvelope({
-            protocol: 'mcp',
-            action: 'jsonrpc',
-            payload: {
-                jsonrpc: '2.0',
-                method: 'notifications/tools-update',
-                params: {
-                    tools: payloadTools,
-                    reason,
-                    timestamp: Date.now(),
-                },
-                id: generateTraceId('tools'),
-            },
-            meta: { reason },
-        });
+        if (!ws || ws.readyState !== WS.OPEN) return;
+        try {
+            ws.send(JSON.stringify({
+                type: 'init',
+                nodeId: getResolvedNodeId(),
+                host: resolveAdvertisedHost(),
+                port: resolveAdvertisedPort(),
+            }));
+        } catch (error) {
+            logger.warn('发送 Edge Node 握手失败: %s', (error as Error).message);
+        }
     };
 
     const handleInboundMessage = async (data: any) => {
@@ -726,24 +600,16 @@ function startEdgeEnvelopeBridge(ctx?: Context) {
             logger.warn('Edge Token 已失效，需要重新授权');
             return;
         }
-        let envelope: EdgeEnvelope;
-        if (parsed.protocol) envelope = parsed;
-        else if (parsed.jsonrpc) {
-            envelope = { protocol: 'mcp', action: 'jsonrpc', payload: parsed };
-        } else {
+        if (!parsed.protocol) {
             logger.debug?.('忽略未知消息: %s', text);
             return;
         }
+        const envelope: EdgeEnvelope = parsed;
         envelope.direction = 'inbound';
         // 不再自动设置 nodeId，由上游从 token 或其他方式识别
         emitEdgeEvent(ctx, 'inbound', envelope);
-        if (envelope.protocol === 'mqtt') {
-            await handleInboundMqttEnvelope(ctx, envelope);
-        } else if (envelope.protocol === 'mcp') {
-            await handleInboundMcpEnvelope(ctx, envelope);
-        } else {
-            logger.debug?.('未知协议 Envelope: %s', envelope.protocol);
-        }
+        if (envelope.protocol === 'mqtt') await handleInboundMqttEnvelope(ctx, envelope);
+        else logger.debug?.('未知协议 Envelope: %s', envelope.protocol);
     };
 
     const stopHeartbeat = () => {
@@ -794,10 +660,9 @@ function startEdgeEnvelopeBridge(ctx?: Context) {
         ws.on('open', () => {
             logger.success('Edge WS 连接成功: %s', socketEndpoint.replace(/([?&]token=)[^&]+/i, '$1***'));
             retryDelay = 5000;
-            flushQueue();
             startHeartbeat();
             sendHandshake();
-            sendToolsNotification('bootstrap');
+            if (String((config as any).ws?.token || '')) flushQueue();
         });
 
         ws.on('message', (data: any) => {
@@ -820,11 +685,6 @@ function startEdgeEnvelopeBridge(ctx?: Context) {
 
     connect();
 
-    const unsubscribeTools = onNodeToolsUpdated((tools) => {
-        sendToolsNotification('tools-change', tools);
-    });
-    listeners.push(unsubscribeTools);
-
     const handle: EdgeBridgeHandle = {
         send: enqueueEnvelope,
         dispose: () => {
@@ -838,9 +698,6 @@ function startEdgeEnvelopeBridge(ctx?: Context) {
                 try { ws.close(); } catch { /* ignore */ }
                 ws = null;
             }
-            for (const dispose of listeners) {
-                try { dispose?.(); } catch { /* ignore */ }
-            }
         },
     };
 
@@ -850,16 +707,6 @@ function startEdgeEnvelopeBridge(ctx?: Context) {
         if (edgeBridgeHandle === handle) edgeBridgeHandle = null;
         handle.dispose();
     };
-}
-
-const NODE_TOOL_REFRESH_INTERVAL = 10 * 60 * 1000;
-
-function sanitizeIdentifier(value: string): string {
-    return String(value || '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '')
-        .slice(0, 48) || 'device';
 }
 
 function normalizeNodeUpstream(target: string): string | null {
@@ -933,329 +780,11 @@ function resolveAdvertisedPort(): number {
     return 5284;
 }
 
-function flattenExposes(exposes: any): any[] {
-    const result: any[] = [];
-    const walk = (items: any): void => {
-        if (!items) return;
-        if (Array.isArray(items)) {
-            for (const item of items) walk(item);
-            return;
-        }
-        result.push(items);
-        if (Array.isArray(items.features)) walk(items.features);
-        if (Array.isArray(items.children)) walk(items.children);
-    };
-    walk(exposes);
-    return result;
-}
-
-function hasSwitchCapability(device: any): boolean {
-    if (!device) return false;
-    if (device.supportsOnOff === false) return false;
-    const exposures = flattenExposes(device.definition?.exposes || device.exposes || []);
-    if (exposures.length) {
-        if (exposures.some((feature) => {
-            const type = String(feature?.type || '').toLowerCase();
-            const property = String(feature?.property || '').toLowerCase();
-            const name = String(feature?.name || '').toLowerCase();
-            const label = String(feature?.label || '').toLowerCase();
-            return type === 'switch'
-                || type === 'binary'
-                || property === 'state'
-                || property === 'on'
-                || property === 'off'
-                || name === 'state'
-                || label.includes('switch')
-                || label.includes('开关');
-        })) {
-            return true;
-        }
-    }
-    if (device.features && Array.isArray(device.features)) {
-        if (device.features.some((f: any) => String(f?.property || '').toLowerCase() === 'state')) return true;
-    }
-    if (device.state && (device.state.state !== undefined || device.state.on !== undefined)) return true;
-    if (device.definition?.supportsOnOff) return true;
-    return device.supportsOnOff !== false;
-}
-
-export function buildDynamicToolEntries(devices: any[], nodeId: string): NodeToolRegistryEntry[] {
-    const entries: NodeToolRegistryEntry[] = [];
-    const seenTargets = new Set<string>();
-    const sanitizedNode = sanitizeIdentifier(nodeId);
-    
-    logger.info('[buildDynamicToolEntries] 开始处理 %d 个设备', devices?.length || 0);
-    
-    for (const device of devices || []) {
-        const controlTargetId = device?.friendly_name || device?.ieee_address || device?.id;
-        if (!controlTargetId) continue;
-        if (seenTargets.has(controlTargetId)) continue;
-        if (!hasSwitchCapability(device)) {
-            logger.debug('[buildDynamicToolEntries] 跳过设备 %s (无开关能力)', controlTargetId);
-            continue;
-        }
-        seenTargets.add(controlTargetId);
-        
-        logger.debug('[buildDynamicToolEntries] 处理设备: %s', controlTargetId);
-
-        // 检测是否为多端点设备
-        const endpoints = detectEndpoints(device);
-        
-        if (endpoints.length > 0) {
-            // 为每个端点创建独立的工具
-            for (const endpoint of endpoints) {
-                const endpointDeviceId = `${controlTargetId}_${endpoint}`;
-                const sanitizedDevice = sanitizeIdentifier(endpointDeviceId);
-                const hashSource = `${nodeId}:${device?.ieee_address || controlTargetId}:${endpoint}`;
-                const uniqueSuffix = crypto.createHash('sha1').update(hashSource).digest('hex').slice(0, 6);
-                const toolName = `node_${sanitizedNode}_${sanitizedDevice}_${uniqueSuffix}_switch`;
-                const actions = ['ON', 'OFF', 'TOGGLE'];
-                const defaultDescription = `控制设备 ${device?.friendly_name || controlTargetId} 端点 ${endpoint} 的开关`;
-                const parameters = {
-                    type: 'object',
-                    properties: {
-                        state: {
-                            type: 'string',
-                            enum: actions,
-                            description: '开关状态：ON=开启，OFF=关闭，TOGGLE=切换当前状态',
-                        },
-                    },
-                    required: ['state'],
-                };
-                const metadata = {
-                    category: 'zigbee-switch',
-                    nodeId,
-                    deviceId: endpointDeviceId,
-                    originalDeviceId: controlTargetId,
-                    endpoint: endpoint,
-                    friendlyName: `${device?.friendly_name || controlTargetId}_${endpoint}`,
-                    ieeeAddress: device?.ieee_address || controlTargetId,
-                    model: device?.definition?.model || device?.model || '',
-                    vendor: device?.definition?.vendor || device?.vendor || '',
-                    actions,
-                    defaultDescription,
-                    autoGenerated: true,
-                    docId: `node:${nodeId}:${toolName}`,
-                };
-                const entry: NodeToolRegistryEntry = {
-                    tool: {
-                        name: toolName,
-                        description: defaultDescription,
-                        inputSchema: parameters,
-                        metadata,
-                    },
-                    handler: async (ctx: Context, args: any) => {
-                        logger.info('[%s] 调用工具: %o', toolName, args);
-                        const { state } = args || {};
-                        if (!state) throw new Error('缺少必要参数：state');
-                        if (!actions.includes(state)) {
-                            throw new Error(`state 必须是 ${actions.join(', ')} 之一`);
-                        }
-                        await callZigbeeControlTool(ctx, { deviceId: endpointDeviceId, state });
-                        return { success: true, deviceId: endpointDeviceId, state };
-                    },
-                };
-                entries.push(entry);
-            }
-        } else {
-            // 单端点设备：保持原有逻辑
-            const sanitizedDevice = sanitizeIdentifier(controlTargetId);
-            const hashSource = `${nodeId}:${device?.ieee_address || controlTargetId}`;
-            const uniqueSuffix = crypto.createHash('sha1').update(hashSource).digest('hex').slice(0, 6);
-            const toolName = `node_${sanitizedNode}_${sanitizedDevice}_${uniqueSuffix}_switch`;
-            const actions = ['ON', 'OFF', 'TOGGLE'];
-            const defaultDescription = `控制设备 ${device?.friendly_name || controlTargetId} 的开关`;
-            const parameters = {
-                type: 'object',
-                properties: {
-                    state: {
-                        type: 'string',
-                        enum: actions,
-                        description: '开关状态：ON=开启，OFF=关闭，TOGGLE=切换当前状态',
-                    },
-                },
-                required: ['state'],
-            };
-            const metadata = {
-                category: 'zigbee-switch',
-                nodeId,
-                deviceId: controlTargetId,
-                friendlyName: device?.friendly_name || controlTargetId,
-                ieeeAddress: device?.ieee_address || controlTargetId,
-                model: device?.definition?.model || device?.model || '',
-                vendor: device?.definition?.vendor || device?.vendor || '',
-                actions,
-                defaultDescription,
-                autoGenerated: true,
-                docId: `node:${nodeId}:${toolName}`,
-            };
-            const entry: NodeToolRegistryEntry = {
-                tool: {
-                    name: toolName,
-                    description: defaultDescription,
-                    inputSchema: parameters,
-                    metadata,
-                },
-                handler: async (ctx: Context, args: any) => {
-                    const stateRaw = args?.state;
-                    const normalizedState = String(stateRaw ?? '').trim().toUpperCase();
-                    if (!normalizedState) throw new Error('缺少 state 参数');
-                    if (!actions.includes(normalizedState)) {
-                        throw new Error(`state 必须是 ${actions.join(', ')} 之一`);
-                    }
-                    await callZigbeeControlTool(ctx, { deviceId: controlTargetId, state: normalizedState });
-                    return {
-                        success: true,
-                        deviceId: controlTargetId,
-                        state: normalizedState,
-                        friendlyName: metadata.friendlyName,
-                    };
-                },
-                metadata,
-                autoGenerated: true,
-            };
-            (entry.tool as any).parameters = parameters;
-            entries.push(entry);
-        }
-    }
-    return entries;
-}
-
-function computeEntrySignature(entries: NodeToolRegistryEntry[]): string {
-    if (!entries || !entries.length) return 'empty';
-    const parts = entries.map((entry) => `${entry.tool.name}:${entry.metadata?.deviceId || ''}:${(entry.metadata?.actions || []).join(',')}`);
-    parts.sort();
-    return crypto.createHash('sha1').update(parts.join('|')).digest('hex');
-}
-
-function computeToolsSignature(tools: Array<{ name: string; metadata?: Record<string, any> }>): string {
-    if (!tools || !tools.length) return 'empty';
-    const parts = tools.map((tool) => `${tool.name}:${tool.metadata?.nodeId || ''}:${tool.metadata?.deviceId || ''}`);
-    parts.sort();
-    return crypto.createHash('sha1').update(parts.join('|')).digest('hex');
-}
-
-function decorateToolsForAdvertise(tools: NodeToolDefinition[], nodeId: string, host: string, port: number) {
-    return (tools || []).map((tool) => {
-        const inputSchema = tool.inputSchema || (tool as any).parameters || { type: 'object', properties: {} };
-        const metadata = {
-            defaultDescription: tool.metadata?.defaultDescription || tool.description,
-            autoGenerated: tool.metadata?.autoGenerated ?? false,
-            category: tool.metadata?.category || 'node-core',
-            nodeId,
-            host,
-            port,
-            status: 'online',
-            docId: tool.metadata?.docId || `node:${nodeId}:${tool.name}`,
-            ...tool.metadata,
-        };
-        metadata.nodeId = nodeId;
-        metadata.host = host;
-        metadata.port = port;
-        metadata.status = 'online';
-        metadata.docId = metadata.docId || `node:${nodeId}:${tool.name}`;
-        return {
-            name: tool.name,
-            description: tool.description,
-            inputSchema,
-            parameters: inputSchema,
-            metadata,
-        };
-    });
-}
-
-async function fetchZigbeeDevices(ctx?: Context): Promise<any[]> {
-    if (!ctx) return [];
-    let devices: any[] = [];
-    try {
-        await ctx.inject(['zigbee2mqtt'], async (c) => {
-            const svc = c.zigbee2mqtt;
-            if (!svc) return;
-            if (typeof svc.listDevices === 'function') {
-                devices = await svc.listDevices();
-            } else if (Array.isArray(svc.state?.devices)) {
-                devices = svc.state.devices;
-            }
-        });
-    } catch (e) {
-        logger.warn('获取 Zigbee 设备列表失败: %s', (e as Error).message);
-    }
-    return devices;
-}
-
-function setupNodeMCPRegistration(ctx?: Context) {
-    if (!ctx) return () => {};
-    const nodeId = getResolvedNodeId();
-    const advertiseHost = resolveAdvertisedHost();
-    const advertisePort = resolveAdvertisedPort();
-    let currentToolsSignature = '';
-    let currentDynamicSignature = '';
-    const listeners: Array<() => void> = [];
-
-    const rebuildDynamicTools = async (reason: string, devices?: any[], options: { force?: boolean } = {}) => {
-        try {
-            let targetDevices = devices;
-            if (!Array.isArray(targetDevices) || !targetDevices.length) {
-                targetDevices = await fetchZigbeeDevices(ctx);
-            }
-            const entries = buildDynamicToolEntries(targetDevices, nodeId);
-            const entrySignature = computeEntrySignature(entries);
-            const entriesChanged = entrySignature !== currentDynamicSignature;
-            if (entriesChanged || options.force) {
-                setDynamicNodeTools(entries);
-                currentDynamicSignature = entrySignature;
-                logger.info('自动注册 %d 个 Zigbee MCP 工具（原因: %s）', entries.length, reason);
-            }
-            const decorated = decorateToolsForAdvertise(
-                listNodeTools(true) as NodeToolDefinition[],
-                nodeId,
-                advertiseHost,
-                advertisePort,
-            );
-            const newToolsSignature = computeToolsSignature(decorated);
-            const signatureChanged = newToolsSignature !== currentToolsSignature;
-            if (signatureChanged || options.force) {
-                currentToolsSignature = newToolsSignature;
-                notifyNodeToolsUpdated(decorated);
-                logger.info('MCP 工具快照更新（原因: %s，工具数: %d）', reason, decorated.length);
-            }
-        } catch (e) {
-            logger.warn('刷新 MCP 工具失败（原因: %s）: %s', reason, (e as Error).message);
-        }
-    };
-
-    void rebuildDynamicTools('bootstrap', undefined, { force: true });
-
-    const disposeDevices = ctx.on?.('zigbee2mqtt/devices' as any, (devs: any[]) => {
-        void rebuildDynamicTools('devices-event', devs);
-    });
-    if (typeof disposeDevices === 'function') listeners.push(disposeDevices);
-
-    const disposeConnected = ctx.on?.('zigbee2mqtt/connected' as any, () => {
-        void rebuildDynamicTools('zigbee-connected', undefined, { force: true });
-    });
-    if (typeof disposeConnected === 'function') listeners.push(disposeConnected);
-
-    const interval = setInterval(() => {
-        void rebuildDynamicTools('scheduled-refresh');
-    }, NODE_TOOL_REFRESH_INTERVAL);
-    listeners.push(() => clearInterval(interval));
-
-    return () => {
-        for (const dispose of listeners) {
-            try { dispose?.(); } catch { /* ignore */ }
-        }
-    };
-}
-
 function startNodeConnecting(ctx?: Context) {
-    // 连接本地MQTT broker（用于zigbee2mqtt控制）
     connectToLocalMqttBroker(ctx);
-    const disposeMcp = setupNodeMCPRegistration(ctx);
     const disposeEdge = startEdgeEnvelopeBridge(ctx);
     const disposeState = setupDeviceStateListener(ctx);
     return () => {
-        try { disposeMcp?.(); } catch { /* ignore */ }
         try { disposeEdge?.(); } catch { /* ignore */ }
         try { disposeState?.(); } catch { /* ignore */ }
     };

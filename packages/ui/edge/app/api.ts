@@ -3,7 +3,6 @@ export type EdgeNode = {
   status: 'pending' | 'online' | 'offline' | 'revoked' | string;
   host: string;
   port: number;
-  tools?: any[];
   lastSeen: number;
   tokenConfigured?: boolean;
   requestId?: string;

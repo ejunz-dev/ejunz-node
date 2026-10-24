@@ -93,7 +93,7 @@ export default class EdgeService extends Service<any> {
     }
 
     private routeUpstreamEnvelope(envelope: EdgeEnvelope) {
-        const nodeId = String(envelope.nodeId || '') || this.nodeFromChannel(envelope.channel || '') || this.nodeFromTool(envelope);
+        const nodeId = String(envelope.nodeId || '') || this.nodeFromChannel(envelope.channel || '');
         if (nodeId) {
             edgeRegistry.send(nodeId, { ...envelope, direction: 'inbound', nodeId });
             return;
@@ -105,22 +105,12 @@ export default class EdgeService extends Service<any> {
         return channel.match(/^node\/([^/]+)\//)?.[1] || '';
     }
 
-    private nodeFromTool(envelope: EdgeEnvelope) {
-        const name = envelope.payload?.params?.name;
-        if (!name) return '';
-        return edgeRegistry.list().find((node: any) => node.tools?.some((tool: any) => tool.name === name))?.nodeId || '';
-    }
-
     private async handleMessage(data: any) {
         const text = Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
         let parsed: any;
         try { parsed = JSON.parse(text); } catch { return; }
         if (parsed?.type === 'edge/auth_required' || parsed?.type === 'edge/auth_success' || parsed?.type === 'edge/auth_expired') return;
-        const envelope = parsed?.protocol
-            ? parsed
-            : parsed?.jsonrpc
-                ? { protocol: 'mcp', action: 'jsonrpc', payload: parsed }
-                : null;
+        const envelope = parsed?.protocol ? parsed : null;
         if (envelope) this.routeUpstreamEnvelope(envelope);
     }
 
@@ -148,7 +138,6 @@ export default class EdgeService extends Service<any> {
         this.ws.on('open', () => {
             this.retryDelay = 3000;
             logger.success('Edge upstream connected');
-            this.sendUpstream({ jsonrpc: '2.0', method: 'notifications/initialized' });
             this.heartbeatTimer = setInterval(() => {
                 try { this.ws?.ping?.(); } catch {}
             }, 30000);

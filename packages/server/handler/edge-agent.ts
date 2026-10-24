@@ -6,7 +6,7 @@ import { Context } from 'cordis';
 import { fs, Logger, randomstring } from '../utils';
 import { isEdgeMode } from '../config';
 import { edgeRegistry } from '../model/edge-registry';
-import { callNodeMcp } from '../tools/edge-device-control';
+import { getCurrentDeviceState, sendNodeDeviceControl } from '../tools/edge';
 import { getActiveAgentModel } from './edge-llm-config';
 import { isEdgeAdminAuthorized, requireEdgeAdmin } from './edge-auth';
 
@@ -38,7 +38,7 @@ const tools = [
         type: 'function',
         function: {
             name: 'zigbee_list_devices',
-            description: '通过指定在线节点读取 Zigbee 设备列表。此工具只读。',
+            description: '列出指定 Edge 节点上已上报的 Zigbee 设备及其当前状态。',
             parameters: {
                 type: 'object',
                 properties: { nodeId: { type: 'string', description: 'Edge 节点 ID' } },
@@ -51,7 +51,7 @@ const tools = [
         type: 'function',
         function: {
             name: 'zigbee_get_device_status',
-            description: '读取指定节点上某个 Zigbee 设备的状态。此工具只读。',
+            description: '查询指定 Edge 节点上 Zigbee 设备的当前开关状态。',
             parameters: {
                 type: 'object',
                 properties: {
@@ -59,6 +59,23 @@ const tools = [
                     deviceId: { type: 'string', description: 'Zigbee 设备 ID' },
                 },
                 required: ['nodeId', 'deviceId'],
+                additionalProperties: false,
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'zigbee_control_device',
+            description: '控制指定 Edge 节点上的 Zigbee 开关设备。仅在用户明确要求开启、关闭或切换设备时调用。',
+            parameters: {
+                type: 'object',
+                properties: {
+                    nodeId: { type: 'string', description: 'Edge 节点 ID' },
+                    deviceId: { type: 'string', description: 'Zigbee 设备 ID' },
+                    state: { type: 'string', enum: ['ON', 'OFF', 'TOGGLE'], description: '目标状态' },
+                },
+                required: ['nodeId', 'deviceId', 'state'],
                 additionalProperties: false,
             },
         },
@@ -184,20 +201,42 @@ export class EdgeAgentRuntime {
                 connected: Boolean(node.connected),
                 host: node.host,
                 lastSeen: node.lastSeen,
-                tools: (node.tools || []).map((tool: any) => tool.name).filter(Boolean),
             }));
         }
-        if (name === 'zigbee_list_devices' || name === 'zigbee_get_device_status') {
-            const nodeId = String(args?.nodeId || '');
+        if (name === 'zigbee_list_devices') {
+            const nodeId = String(args?.nodeId || '').trim();
+            if (!nodeId) throw new Error('nodeId is required');
             const node = edgeRegistry.get(nodeId);
-            if (!node) throw new Error('Edge 节点不存在');
-            if (!node.connection) throw new Error(`节点 ${nodeId} 当前未连接`);
-            if (name === 'zigbee_list_devices') return callNodeMcp(nodeId, 'zigbee_list_devices');
-            const deviceId = String(args?.deviceId || '');
-            if (!deviceId) throw new Error('deviceId 不能为空');
-            return callNodeMcp(nodeId, 'zigbee_get_device_status', { deviceId });
+            if (!node) throw new Error(`Edge node not found: ${nodeId}`);
+            const devices = Object.keys(node.deviceStates || {}).map((deviceId) => ({
+                deviceId,
+                currentState: getCurrentDeviceState(node, deviceId) || null,
+                updatedAt: node.deviceStateUpdatedAt?.[deviceId] || null,
+            }));
+            return { nodeId, count: devices.length, devices };
         }
-        throw new Error(`不支持的只读工具：${name}`);
+        if (name === 'zigbee_get_device_status') {
+            const nodeId = String(args?.nodeId || '').trim();
+            const deviceId = String(args?.deviceId || '').trim();
+            if (!nodeId || !deviceId) throw new Error('nodeId and deviceId are required');
+            const node = edgeRegistry.get(nodeId);
+            if (!node) throw new Error(`Edge node not found: ${nodeId}`);
+            return {
+                nodeId,
+                deviceId,
+                currentState: getCurrentDeviceState(node, deviceId) || null,
+                updatedAt: node.deviceStateUpdatedAt?.[deviceId] || null,
+                online: Boolean(node.connected || node.status === 'online'),
+            };
+        }
+        if (name === 'zigbee_control_device') {
+            const nodeId = String(args?.nodeId || '').trim();
+            const deviceId = String(args?.deviceId || '').trim();
+            const state = String(args?.state || '').trim().toUpperCase();
+            if (!nodeId || !deviceId) throw new Error('nodeId and deviceId are required');
+            return sendNodeDeviceControl(nodeId, deviceId, state);
+        }
+        throw new Error(`不支持的 Edge 工具：${name}`);
     }
 
     private async complete(session: any) {
@@ -208,9 +247,8 @@ export class EdgeAgentRuntime {
         const systemMessage = {
             role: 'system',
             content: [
-                '你是 Ejunz Edge Agent，负责解释边缘节点、上游连接和 Zigbee 设备状态。默认使用中文回答。',
-                '需要实时信息时使用提供的只读工具，不要臆测在线状态。工具只允许读取，不允许控制设备、修改配置或执行其他有副作用的操作。',
-                '如果用户要求控制设备，说明当前 Agent 只支持查询，并引导用户使用现有设备控制界面。',
+                '你是 Ejunz Edge Agent，负责解释边缘节点、上游连接和 Zigbee 设备状态，并按用户明确要求控制 Zigbee 开关。默认使用中文回答。',
+                '需要实时信息时使用相应查询工具，不要臆测节点或设备状态。只有用户明确要求开启、关闭或切换设备时才调用 zigbee_control_device；若节点或设备不明确，应先查询或向用户澄清。不得修改配置或执行其他未提供的副作用操作。',
             ].join('\n'),
         };
         const messages = [systemMessage, ...session.messages];

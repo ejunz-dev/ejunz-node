@@ -1,0 +1,36 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Button } from '@ejunz/ui-next/components/button';
+import { Callout } from '@ejunz/ui-next/components/callout';
+import { Card } from '@ejunz/ui-next/components/card';
+import { api, EdgeNode } from '../api';
+type Device = { deviceId: string; friendlyName: string; model?: string; vendor?: string; type?: string; supportsOnOff?: boolean; currentState?: string; online?: boolean };
+export default function Devices() {
+  const [nodes, setNodes] = useState<EdgeNode[]>([]); const [nodeId, setNodeId] = useState<string | null>(null); const [devices, setDevices] = useState<Device[]>([]); const [error, setError] = useState(''); const [busyDevice, setBusyDevice] = useState(''); const [syncMode, setSyncMode] = useState<'connecting' | 'live' | 'polling' | 'auth-error'>('connecting');
+  const loadNodes = useCallback(async () => { const result = await api<{ nodes: EdgeNode[] }>('/api/edge/nodes'); setNodes(result.nodes || []); if (!nodeId || !result.nodes.some((node) => node.nodeId === nodeId)) setNodeId(result.nodes.find((node) => node.status === 'online')?.nodeId || result.nodes[0]?.nodeId || null); }, [nodeId]);
+  const loadDevices = useCallback(async () => { if (!nodeId) { setDevices([]); return; } const result = await api<{ devices?: Device[] }>(`/api/edge/nodes/${encodeURIComponent(nodeId)}/devices`); setDevices(result.devices || []); }, [nodeId]);
+  useEffect(() => { void loadNodes().catch((e) => setError((e as Error).message)); const timer = window.setInterval(() => void loadNodes().catch((e) => setError((e as Error).message)), 5000); return () => window.clearInterval(timer); }, [loadNodes]);
+  useEffect(() => {
+    void loadDevices().catch((e) => setError((e as Error).message)); if (!nodeId) { setSyncMode('polling'); return; }
+    let disposed = false; let socket: WebSocket | undefined; let reconnectTimer: number | undefined; let fallbackTimer: number | undefined; let refreshTimer: number | undefined; let reconnectDelay = 1000; let helloSent = false; let subscribeSent = false; let subscribed = false;
+    const send = (type: string, fields: Record<string, unknown> = {}) => { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ protocol: 'edge-ws/v1', type, ...fields })); };
+    const refreshDevices = () => { if (refreshTimer !== undefined) return; refreshTimer = window.setTimeout(() => { refreshTimer = undefined; if (!disposed) void loadDevices().catch((e) => setError((e as Error).message)); }, 80); };
+    const connect = () => { if (disposed) return; helloSent = false; subscribeSent = false; subscribed = false; const url = new URL('/api/edge/ws', window.location.href); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'; setSyncMode('connecting'); socket = new WebSocket(url.toString());
+      socket.onopen = () => { if (disposed || helloSent) return; helloSent = true; send('hello', { clientId: 'edge-devices-ui' }); };
+      socket.onmessage = (event) => { if (disposed) return; let message: any; try { message = JSON.parse(String(event.data)); } catch { return; }
+        if (message.protocol !== 'edge-ws/v1') { if (message.type === 'device_state' && String(message.topic || '').startsWith(`node/${nodeId}/`)) refreshDevices(); return; }
+        if (message.type === 'hello' && !helloSent) { helloSent = true; send('hello', { clientId: 'edge-devices-ui' }); } else if (message.type === 'hello_ack' && !subscribeSent) { subscribeSent = true; send('subscribe', { nodeIds: [nodeId] }); } else if (message.type === 'subscribed') { subscribed = true; setSyncMode('live'); send('snapshot_request', { nodeIds: [nodeId] }); } else if (message.type === 'device_snapshot') { if (message.nodes?.some((node: any) => node.nodeId === nodeId)) refreshDevices(); } else if (message.type === 'device_state' && message.nodeId === nodeId) refreshDevices(); else if (message.type === 'ping') send('ping', { timestamp: message.timestamp ?? Date.now() });
+      };
+      socket.onclose = (event) => { if (disposed) return; subscribed = false; if (event.code === 4001 || event.code === 4003) { setSyncMode('auth-error'); return; } setSyncMode('polling'); reconnectTimer = window.setTimeout(connect, reconnectDelay); reconnectDelay = Math.min(reconnectDelay * 2, 15000); };
+      socket.onerror = () => { try { socket?.close(); } catch {} };
+    };
+    connect(); fallbackTimer = window.setInterval(() => { if (!subscribed) void loadDevices().catch((e) => setError((e as Error).message)); }, 30000);
+    return () => { disposed = true; if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer); if (fallbackTimer !== undefined) window.clearInterval(fallbackTimer); if (refreshTimer !== undefined) window.clearTimeout(refreshTimer); try { socket?.close(); } catch {} };
+  }, [loadDevices, nodeId]);
+  const control = async (deviceId: string, state: 'ON' | 'OFF' | 'TOGGLE') => { if (!nodeId) return; try { setBusyDevice(deviceId); setError(''); await api(`/api/edge/nodes/${encodeURIComponent(nodeId)}/devices/control`, { method: 'POST', body: JSON.stringify({ deviceId, state }) }); await loadDevices(); } catch (e) { setError((e as Error).message); } finally { setBusyDevice(''); } };
+  const syncLabel = syncMode === 'live' ? 'Live updates' : syncMode === 'auth-error' ? 'Live connection authentication failed' : syncMode === 'connecting' ? 'Connecting to live updates' : 'Polling fallback';
+  return <section className="edge-page"><header className="edge-page-heading"><div><h1>Device control</h1><span className={`edge-tag edge-tag-${syncMode}`}>{syncLabel}</span></div><Button onClick={() => void loadDevices()}>Refresh</Button></header>
+    {error && <Callout type="warn" title="Operation failed">{error}</Callout>}<Card title="Select Node"><label className="edge-field"><span>Node</span><select value={nodeId || ''} onChange={(event) => setNodeId(event.currentTarget.value || null)}><option value="">Choose a Node</option>{nodes.map((node) => <option key={node.nodeId} value={node.nodeId}>{node.nodeId} ({node.status})</option>)}</select></label></Card>
+    {!nodeId && <p className="edge-muted">No connected Node is available.</p>}{nodeId && !devices.length && <p className="edge-muted">No devices found, or Zigbee has not finished initializing.</p>}
+    <div className="edge-device-grid">{devices.map((device) => <Card key={device.deviceId} title={device.friendlyName || device.deviceId}><p className="edge-muted">{device.deviceId}</p><p>{device.vendor || 'Unknown vendor'} · {device.model || 'Unknown model'}</p><p><span className={`edge-tag ${device.online === false ? 'edge-tag-offline' : 'edge-tag-online'}`}>{device.online === false ? 'Offline' : 'Online'}</span></p><label className="edge-check"><span>Power {device.currentState === 'ON' ? 'on' : device.currentState === 'OFF' ? 'off' : 'unknown'}</span><input type="checkbox" checked={device.currentState === 'ON'} disabled={device.supportsOnOff === false || busyDevice === device.deviceId} onChange={(event) => void control(device.deviceId, event.currentTarget.checked ? 'ON' : 'OFF')} /></label><div className="edge-actions"><Button disabled={device.supportsOnOff === false || busyDevice === device.deviceId} onClick={() => void control(device.deviceId, 'TOGGLE')}>Toggle</Button></div></Card>)}</div>
+  </section>;
+}

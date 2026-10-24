@@ -1,0 +1,86 @@
+.node-ui-shell {
+  min-height: 100vh;
+  color: var(--uix-color, #f3f4f6);
+  background: var(--uix-bg, #111827);
+}
+
+.node-ui-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  min-height: 64px;
+  padding: 0 2rem;
+  border-bottom: 1px solid var(--uix-border, #374151);
+  background: var(--uix-surface, #1f2937);
+}
+
+.node-ui-brand {
+  color: inherit;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.node-ui-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.node-ui-nav a {
+  color: var(--uix-muted, #9ca3af);
+  text-decoration: none;
+}
+
+.node-ui-nav a:hover,
+.node-ui-nav a:focus-visible {
+  color: var(--uix-color, #f3f4f6);
+}
+
+.node-ui-main {
+  width: min(100% - 2rem, 1200px);
+  margin: 0 auto;
+  padding: 2rem 0;
+}
+
+.node-ui-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.node-ui-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.node-ui-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.node-ui-field input,
+.node-ui-field select {
+  max-width: 100%;
+}
+
+.node-ui-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .node-ui-header {
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    padding: 1rem;
+  }
+
+  .node-ui-main {
+    width: min(100% - 1rem, 1200px);
+    padding: 1rem 0;
+  }
+}

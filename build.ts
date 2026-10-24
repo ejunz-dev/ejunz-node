@@ -22,7 +22,20 @@ function size(a: string) {
 const nopMap = '//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIiJdLCJtYXBwaW5ncyI6IkEifQ==';
 
 (async () => {
-    fs.ensureDirSync(path.resolve(process.cwd(), 'dist'));
+    const distPath = path.resolve(process.cwd(), 'dist');
+    fs.ensureDirSync(distPath);
+    for (const legacyPath of [
+        'packages/data/static.node-ui',
+        'packages/data/static.edge-ui',
+        'packages/ui/node/dist',
+        'packages/ui/edge/dist',
+        'dist/data/static.node-ui',
+        'dist/data/static.edge-ui',
+        'dist/node-ui',
+        'dist/ui',
+    ]) {
+        fs.removeSync(path.resolve(process.cwd(), legacyPath));
+    }
     const res = await esbuild.build({
         platform: 'node',
         bundle: true,
@@ -79,22 +92,14 @@ const nopMap = '//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIj
             if (fs.statSync(srcPath).isFile()) {
                 fs.copyFileSync(srcPath, destPath);
                 logger.info(`Copied ${file} to dist/data/`);
+            } else if (fs.statSync(srcPath).isDirectory()) {
+                fs.copySync(srcPath, destPath);
+                logger.info(`Copied directory ${file} to dist/data/`);
             }
         }
         logger.info('Data directory copied successfully');
     } else {
         logger.warn('Data directory not found, skipping copy');
-    }
-    const uiTemplateSource = path.resolve(process.cwd(), 'packages/ui/node/templates');
-    const uiTemplateDest = path.resolve(process.cwd(), 'dist/ui/node/templates');
-    if (fs.existsSync(uiTemplateSource)) {
-        fs.ensureDirSync(uiTemplateDest);
-        for (const file of fs.readdirSync(uiTemplateSource)) {
-            const srcPath = path.join(uiTemplateSource, file);
-            if (fs.statSync(srcPath).isFile()) {
-                fs.copyFileSync(srcPath, path.join(uiTemplateDest, file));
-            }
-        }
     }
     if (!process.env.SEA) return;
     fs.writeFileSync(path.resolve(process.cwd(), 'dist/sea-config.json'), JSON.stringify({

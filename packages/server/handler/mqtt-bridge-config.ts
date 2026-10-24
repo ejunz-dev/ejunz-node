@@ -1,10 +1,7 @@
 // @ts-nocheck
 import { Handler, ConnectionHandler } from '@ejunz/framework';
 import { Context } from 'cordis';
-import * as path from 'node:path';
-import * as fs from 'node:fs';
 import { config, saveConfig } from '../config';
-import { resolveUiAssetPath } from '../../ui';
 import MqttBridgeService from '../service/mqtt-bridge';
 
 // 获取配置Schema信息（声明的配置）
@@ -145,22 +142,14 @@ class ConfigStatusHandler extends Handler<Context> {
     }
 }
 
-// 前端页面 Handler
+// Keep the old URL as a compatibility redirect to the ui-next settings page.
 class MqttBridgeConfigPage extends Handler<Context> {
     noCheckPermView = true;
+
     async get() {
-        const htmlPath = resolveUiAssetPath(__dirname, 'ui/node/templates/mqtt-bridge-config.html', '../../ui/node/templates/mqtt-bridge-config.html');
-        if (fs.existsSync(htmlPath)) {
-            this.response.type = 'text/html; charset=utf-8';
-            this.response.addHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-            this.response.addHeader('Pragma', 'no-cache');
-            this.response.addHeader('Expires', '0');
-            const content = fs.readFileSync(htmlPath, 'utf8');
-            this.response.body = content;
-        } else {
-            this.response.status = 404;
-            this.response.body = 'mqtt-bridge-config.html not found';
-        }
+        this.response.status = 302;
+        this.response.addHeader('Location', '/node-ui/settings');
+        this.response.body = '';
     }
 }
 

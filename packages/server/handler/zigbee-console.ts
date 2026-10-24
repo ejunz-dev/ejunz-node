@@ -1,10 +1,7 @@
 // @ts-nocheck
 import { Handler, ConnectionHandler } from '@ejunz/framework';
 import { Context } from 'cordis';
-import * as path from 'node:path';
-import * as fs from 'node:fs';
 import Zigbee2MqttService from '../service/zigbee2mqtt';
-import { resolveUiAssetPath } from '../../ui';
 import { Logger } from '../utils';
 
 const logger = new Logger('handler/zigbee-console');
@@ -247,26 +244,14 @@ export function broadcastZigbeeUpdate(ctx: Context, type: string, data: any) {
     }
 }
 
-// 前端页面 Handler
+// Keep the old URL as a compatibility redirect to the ui-next page.
 class ZigbeeConsolePage extends Handler<Context> {
     noCheckPermView = true;
+
     async get() {
-        const htmlPath = resolveUiAssetPath(__dirname, 'ui/node/templates/zigbee-console.html', '../../ui/node/templates/zigbee-console.html');
-        if (fs.existsSync(htmlPath)) {
-            this.response.type = 'text/html; charset=utf-8';
-            this.response.addHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-            this.response.addHeader('Pragma', 'no-cache');
-            this.response.addHeader('Expires', '0');
-            const content = fs.readFileSync(htmlPath, 'utf8');
-            // 确保文件内容完整
-            if (!content.trim().endsWith('</html>')) {
-                logger.warn('[zigbee-console] HTML file may be incomplete');
-            }
-            this.response.body = content;
-        } else {
-            this.response.status = 404;
-            this.response.body = 'zigbee-console.html not found';
-        }
+        this.response.status = 302;
+        this.response.addHeader('Location', '/node-ui/console');
+        this.response.body = '';
     }
 }
 

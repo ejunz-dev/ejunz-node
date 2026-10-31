@@ -201,13 +201,20 @@ export function sendNodeDeviceControl(nodeId: string, deviceId: string, state: s
     return { success: true, nodeId, deviceId, state };
 }
 
-const edgeToolExecutors = Object.fromEntries(Object.keys(edgeToolDefinitions).map((name) => [
-    name,
-    class extends Executor<Context, EdgeToolArguments> {
+function createEdgeToolExecutor(name: string) {
+    const executor = class extends Executor<Context, EdgeToolArguments> {
         async execute() {
             return executeEdgeHostTool(name, this.args);
         }
-    },
+    };
+    const executorName = `${name.split('_').map((part) => part[0].toUpperCase() + part.slice(1)).join('')}Executor`;
+    Object.defineProperty(executor, 'name', { value: executorName });
+    return executor;
+}
+
+const edgeToolExecutors = Object.fromEntries(Object.keys(edgeToolDefinitions).map((name) => [
+    name,
+    createEdgeToolExecutor(name),
 ])) as Record<string, any>;
 
 export function apply(ctx: Context) {

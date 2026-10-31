@@ -1,0 +1,13 @@
+diff --git a/lib/modules/agent-loop.js b/lib/modules/agent-loop.js
+index d097106c5230de5c0e78aa97299990d182c17ddc..934195e0e8000f93751ce5034a9b4d1aff9ed230 100644
+--- a/lib/modules/agent-loop.js
++++ b/lib/modules/agent-loop.js
+@@ -3,7 +3,7 @@ import { c as LlmError, f as assertNever, g as errorChain, n as BlockAssembler }
+ import { h as SessionId, l as headerEquals, o as canonicalHeader, r as SessionPreparation } from "../session-CHqZ6SHG.js";
+ import { a as isReplacementSurfaceEvent } from "../surface-CEdwBwaE-BB4UTlpa.js";
+ import { a as renderContextSections, i as joinContextSections, o as renderPrompt } from "../system-prompt-BDHofCmW.js";
+-import { n as TOOL_ABORTED_BEFORE_DISPATCH, r as TOOL_RUNTIME_SCHEDULER } from "../tools-Dtu2Sv0a.js";
++import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER } from "./tools.js";
+ import { a as emitAgentEvent, i as assembleContextFor, n as Inbox, r as agentEvents } from "../agent-Cd3sYIS7.js";
+ import { t as _usingCtx } from "../usingCtx-DwOBYOJf.js";
+ import { o as createScope } from "../scope-CCLKClxc.js";

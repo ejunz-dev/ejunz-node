@@ -1,0 +1,36 @@
+{
+  "name": "@ejunz/node-agent-profile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "cordis.patch.yml",
+    "src/**/*.ts"
+  ],
+  "exports": {
+    ".": "./src/agent-mongo.ts",
+    "./agent-mongo": "./src/agent-mongo.ts",
+    "./settings-mongo": "./src/settings-mongo.ts",
+    "./credentials-mongo": "./src/credentials-mongo.ts",
+    "./edge-host-tools": "./src/edge-host-tools.ts",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@ejunz/cordis": "4.0.1",
+    "@ejunz/cordis-plugin-loader": "^1.0.2",
+    "@ejunz/ea-core": "0.1.4",
+    "@ejunz/profile-web": "0.1.2-rc.5"
+  },
+  "ea": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "modules": {
+      "agent-mongo": "src/agent-mongo.ts",
+      "settings-mongo": "src/settings-mongo.ts",
+      "credentials-mongo": "src/credentials-mongo.ts",
+      "edge-host-tools": "src/edge-host-tools.ts"
+    }
+  }
+}

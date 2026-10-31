@@ -5,6 +5,7 @@
   "workspaces": [
     "packages/protocol",
     "packages/server",
+    "packages/profile-node-agent",
     "packages/ui/node",
     "packages/ui/edge"
   ],

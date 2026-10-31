@@ -108,9 +108,16 @@ const edgeSchema = Schema.object({
         endpoint: Schema.string().default(''),
         token: Schema.string().default(''),
     }).default({ enabled: false, endpoint: '', token: '' }),
+    agent: Schema.object({
+        mongo: Schema.object({
+            uri: Schema.string().role('secret').default(''),
+            database: Schema.string().default('ejunz_agent'),
+        }).default({ uri: '', database: 'ejunz_agent' }),
+    }).default({ mongo: { uri: '', database: 'ejunz_agent' } }),
 }).description('Edge Config');
 
-export const config = (isEdgeMode ? edgeSchema : nodeSchema)(
+const configSchema: any = isEdgeMode ? edgeSchema : nodeSchema;
+export const config = configSchema(
     fs.existsSync(configPath)
         ? (yaml.load(fs.readFileSync(configPath, 'utf8')) as any)
         : {},

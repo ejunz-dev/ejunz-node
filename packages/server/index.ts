@@ -45,7 +45,11 @@ function applyEdge(ctx: Context) {
     const edgeSvc = require('./service/edge');
     ctx.plugin(edgeSvc.default || edgeSvc);
     ctx.plugin(require('./tools/edge'));
+    const dbSvc = require('./service/db');
+    ctx.plugin(dbSvc.default || dbSvc);
     ctx.inject(['server'], (c) => {
+        const agentSvc = require('./service/agent');
+        c.plugin(agentSvc.default || agentSvc);
         c.plugin(require('./handler/edge-node'));
         c.plugin(require('./handler/edge-api'));
         c.plugin(require('./handler/edge-llm-config'));

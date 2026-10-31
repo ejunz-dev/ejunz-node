@@ -1,380 +1,244 @@
 // @ts-nocheck
-import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import { Handler } from '@ejunz/framework';
 import { Context } from 'cordis';
-import { fs, Logger, randomstring } from '../utils';
+import { Logger } from '../utils';
 import { isEdgeMode } from '../config';
-import { edgeRegistry } from '../model/edge-registry';
-import { getCurrentDeviceState, sendNodeDeviceControl } from '../tools/edge';
-import { getActiveAgentModel } from './edge-llm-config';
 import { isEdgeAdminAuthorized, requireEdgeAdmin } from './edge-auth';
 
 const logger = new Logger('handler/edge-agent');
-const storePath = path.resolve(process.cwd(), 'data/edge-agent-sessions.json');
-const maxStoredSessions = 100;
-const maxStoredEvents = 500;
-const maxToolResultChars = 12000;
-const modelTimeoutMs = 120000;
+const REQUEST_TIMEOUT_MS = 120_000;
 
-const tools = [
-    {
-        type: 'function',
-        function: {
-            name: 'edge_status',
-            description: '读取 Edge 服务、上游连接和节点数量状态。',
-            parameters: { type: 'object', properties: {}, additionalProperties: false },
-        },
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'edge_list_nodes',
-            description: '列出 Edge 上已授权的节点及其在线状态。',
-            parameters: { type: 'object', properties: {}, additionalProperties: false },
-        },
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'zigbee_list_devices',
-            description: '列出指定 Edge 节点上已上报的 Zigbee 设备及其当前状态。',
-            parameters: {
-                type: 'object',
-                properties: { nodeId: { type: 'string', description: 'Edge 节点 ID' } },
-                required: ['nodeId'],
-                additionalProperties: false,
-            },
-        },
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'zigbee_get_device_status',
-            description: '查询指定 Edge 节点上 Zigbee 设备的当前开关状态。',
-            parameters: {
-                type: 'object',
-                properties: {
-                    nodeId: { type: 'string', description: 'Edge 节点 ID' },
-                    deviceId: { type: 'string', description: 'Zigbee 设备 ID' },
-                },
-                required: ['nodeId', 'deviceId'],
-                additionalProperties: false,
-            },
-        },
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'zigbee_control_device',
-            description: '控制指定 Edge 节点上的 Zigbee 开关设备。仅在用户明确要求开启、关闭或切换设备时调用。',
-            parameters: {
-                type: 'object',
-                properties: {
-                    nodeId: { type: 'string', description: 'Edge 节点 ID' },
-                    deviceId: { type: 'string', description: 'Zigbee 设备 ID' },
-                    state: { type: 'string', enum: ['ON', 'OFF', 'TOGGLE'], description: '目标状态' },
-                },
-                required: ['nodeId', 'deviceId', 'state'],
-                additionalProperties: false,
-            },
-        },
-    },
-];
+let agentService: any;
+let edgeServer: any;
+let edgeContext: Context;
 
-function readStore() {
-    if (!fs.existsSync(storePath)) return { sessions: [] };
-    try {
-        const data = JSON.parse(fs.readFileSync(storePath, 'utf8'));
-        if (!data || !Array.isArray(data.sessions)) throw new Error('sessions must be an array');
-        return data;
-    } catch (error) {
-        logger.error('Unable to read Edge Agent sessions: %s', (error as Error).message);
-        throw new Error('Agent 会话数据损坏，暂时无法启动');
-    }
+type RuntimeStatus = {
+    state: 'ready' | 'waiting' | 'starting' | 'error';
+    provider?: string;
+    model?: string;
+    message?: string;
+};
+
+async function callRuntime(path: string, body: unknown, signal?: AbortSignal) {
+    if (!agentService) throw new Error('Agent service is not ready');
+    return agentService.call(path, body, signal);
 }
 
-function writeStore(store: any) {
-    fs.ensureDirSync(path.dirname(storePath));
-    const tempPath = `${storePath}.${process.pid}.${randomstring(6)}.tmp`;
-    try {
-        fs.writeFileSync(tempPath, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
-        fs.chmodSync(tempPath, 0o600);
-        fs.renameSync(tempPath, storePath);
-        fs.chmodSync(storePath, 0o600);
-    } finally {
-        if (fs.existsSync(tempPath)) fs.removeSync(tempPath);
-    }
+function isHostToolBridgeAuthorized(request: any) {
+    const expected = String(agentService?.getHostToolToken?.() || '');
+    const provided = String(request?.headers?.['x-ejunz-agent-token'] || '');
+    if (!expected || !provided) return false;
+    const expectedBytes = Buffer.from(expected);
+    const providedBytes = Buffer.from(provided);
+    return expectedBytes.length === providedBytes.length && timingSafeEqual(expectedBytes, providedBytes);
 }
 
-function textContent(content: any) {
-    if (typeof content === 'string') return content;
-    if (!Array.isArray(content)) return '';
-    return content.filter((part) => part?.type === 'text').map((part) => String(part.text || '')).join('\n').trim();
+function hostToolError(handler: any, status: number, message: string) {
+    handler.response.status = status;
+    handler.response.body = { ok: false, error: { message } };
 }
 
-function stringifyResult(value: unknown) {
-    let text: string;
-    try { text = JSON.stringify(value); } catch { text = String(value); }
-    return text.length > maxToolResultChars ? `${text.slice(0, maxToolResultChars)}…（结果已截断）` : text;
-}
+function hostToolInputSchema(schema: any) {
+    const serialized = schema.toJSON();
+    const refs = serialized.refs as Record<string, any>;
+    const root = refs[String(serialized.uid)];
+    if (root?.type !== 'object') throw new Error('Edge host tools must use object schemas');
 
-function extractApiError(value: any, fallback: string) {
-    const error = value?.error;
-    if (typeof error === 'string') return error;
-    if (typeof error?.message === 'string') return error.message;
-    return fallback;
-}
-
-export class EdgeAgentRuntime {
-    private store: any;
-    private subscribers = new Set<(event: any) => void>();
-    private running = new Set<string>();
-
-    constructor() {
-        this.store = readStore();
-        for (const session of this.store.sessions) session.running = false;
-    }
-
-    status() {
-        try {
-            const model = getActiveAgentModel();
-            return {
-                state: model ? 'ready' : 'waiting',
-                provider: model?.providerName,
-                model: model?.modelId,
-                message: model ? undefined : '请先在模型配置中启用 Provider 和模型，并配置 API Key。',
-            };
-        } catch (error) {
-            return { state: 'waiting', message: (error as Error).message };
-        }
-    }
-
-    subscribe(listener: (event: any) => void) {
-        this.subscribers.add(listener);
-        return () => this.subscribers.delete(listener);
-    }
-
-    private persist() {
-        this.store.sessions = this.store.sessions
-            .sort((a: any, b: any) => b.updatedAt - a.updatedAt)
-            .slice(0, maxStoredSessions);
-        writeStore(this.store);
-    }
-
-    private event(session: any, type: string, data: any = {}) {
-        const event = { type, data, timestamp: Date.now() };
-        const seq = (session.events.at(-1)?.seq || 0) + 1;
-        session.events.push({ seq, event });
-        if (session.events.length > maxStoredEvents) session.events.splice(0, session.events.length - maxStoredEvents);
-        session.updatedAt = Date.now();
-        this.persist();
-        const message = { type: 'session/event', sessionId: session.sessionId, seq, event };
-        for (const subscriber of this.subscribers) {
-            try { subscriber(message); } catch {}
-        }
-    }
-
-    private session(sessionId: unknown) {
-        if (typeof sessionId !== 'string' || !sessionId) throw new Error('sessionId 不能为空');
-        const session = this.store.sessions.find((item: any) => item.sessionId === sessionId);
-        if (!session) throw new Error('对话不存在');
-        return session;
-    }
-
-    private async runTool(name: string, args: any) {
-        if (name === 'edge_status') {
-            const upstream = (global as any).__edge_upstream;
-            const nodes = edgeRegistry.list();
-            return {
-                mode: 'edge',
-                broker: Boolean((global as any).__ejunz_aedes),
-                upstream: upstream?.status?.() || { enabled: false, connected: false },
-                nodeCount: nodes.length,
-                onlineNodes: nodes.filter((node: any) => node.connected || node.status === 'online').length,
-            };
-        }
-        if (name === 'edge_list_nodes') {
-            return edgeRegistry.list().map((node: any) => ({
-                nodeId: node.nodeId,
-                status: node.status,
-                connected: Boolean(node.connected),
-                host: node.host,
-                lastSeen: node.lastSeen,
-            }));
-        }
-        if (name === 'zigbee_list_devices') {
-            const nodeId = String(args?.nodeId || '').trim();
-            if (!nodeId) throw new Error('nodeId is required');
-            const node = edgeRegistry.get(nodeId);
-            if (!node) throw new Error(`Edge node not found: ${nodeId}`);
-            const devices = Object.keys(node.deviceStates || {}).map((deviceId) => ({
-                deviceId,
-                currentState: getCurrentDeviceState(node, deviceId) || null,
-                updatedAt: node.deviceStateUpdatedAt?.[deviceId] || null,
-            }));
-            return { nodeId, count: devices.length, devices };
-        }
-        if (name === 'zigbee_get_device_status') {
-            const nodeId = String(args?.nodeId || '').trim();
-            const deviceId = String(args?.deviceId || '').trim();
-            if (!nodeId || !deviceId) throw new Error('nodeId and deviceId are required');
-            const node = edgeRegistry.get(nodeId);
-            if (!node) throw new Error(`Edge node not found: ${nodeId}`);
-            return {
-                nodeId,
-                deviceId,
-                currentState: getCurrentDeviceState(node, deviceId) || null,
-                updatedAt: node.deviceStateUpdatedAt?.[deviceId] || null,
-                online: Boolean(node.connected || node.status === 'online'),
-            };
-        }
-        if (name === 'zigbee_control_device') {
-            const nodeId = String(args?.nodeId || '').trim();
-            const deviceId = String(args?.deviceId || '').trim();
-            const state = String(args?.state || '').trim().toUpperCase();
-            if (!nodeId || !deviceId) throw new Error('nodeId and deviceId are required');
-            return sendNodeDeviceControl(nodeId, deviceId, state);
-        }
-        throw new Error(`不支持的 Edge 工具：${name}`);
-    }
-
-    private async complete(session: any) {
-        const model = getActiveAgentModel();
-        if (!model) throw new Error('没有启用的模型，请先检查模型配置和 API Key。');
-        if (model.api !== 'openai-completions') throw new Error(`暂不支持 Provider API：${model.api}`);
-
-        const systemMessage = {
-            role: 'system',
-            content: [
-                '你是 Ejunz Edge Agent，负责解释边缘节点、上游连接和 Zigbee 设备状态，并按用户明确要求控制 Zigbee 开关。默认使用中文回答。',
-                '需要实时信息时使用相应查询工具，不要臆测节点或设备状态。只有用户明确要求开启、关闭或切换设备时才调用 zigbee_control_device；若节点或设备不明确，应先查询或向用户澄清。不得修改配置或执行其他未提供的副作用操作。',
-            ].join('\n'),
-        };
-        const messages = [systemMessage, ...session.messages];
-        for (let round = 0; round < 5; round += 1) {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), modelTimeoutMs);
-            let response: Response;
-            let payload: any;
-            try {
-                response = await fetch(`${model.baseURL.replace(/\/+$/, '')}/chat/completions`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(model.apiKey ? { Authorization: `Bearer ${model.apiKey}` } : {}),
-                    },
-                    body: JSON.stringify({
-                        model: model.modelId,
-                        messages,
-                        tools,
-                        tool_choice: 'auto',
-                        temperature: 0.2,
-                        max_tokens: 2048,
-                    }),
-                    signal: controller.signal,
-                });
-                payload = await response.json().catch(() => ({}));
-            } finally {
-                clearTimeout(timeout);
-            }
-            if (!response.ok) throw new Error(extractApiError(payload, `模型请求失败（HTTP ${response.status}）`));
-            const message = payload?.choices?.[0]?.message;
-            if (!message) throw new Error('模型响应中没有 assistant message');
-
-            if (Array.isArray(message.tool_calls) && message.tool_calls.length) {
-                messages.push(message);
-                session.messages.push(message);
-                this.persist();
-                for (const call of message.tool_calls) {
-                    const name = String(call?.function?.name || '');
-                    let args: any = {};
-                    try { args = JSON.parse(call?.function?.arguments || '{}'); } catch { throw new Error(`模型返回了无效的工具参数：${name}`); }
-                    this.event(session, 'tool/call', { name, arguments: args });
-                    let result: any;
-                    try { result = await this.runTool(name, args); }
-                    catch (error) { result = { error: (error as Error).message }; }
-                    const resultText = stringifyResult(result);
-                    this.event(session, 'tool/result', { name, message: { content: [{ type: 'text', text: resultText }] } });
-                    const toolMessage = { role: 'tool', tool_call_id: call.id, content: resultText };
-                    messages.push(toolMessage);
-                    session.messages.push(toolMessage);
-                }
-                this.persist();
-                continue;
-            }
-
-            const answer = textContent(message.content);
-            if (!answer) throw new Error('模型返回了空回复');
-            const assistantMessage = { role: 'assistant', content: answer };
-            session.messages.push(assistantMessage);
-            this.event(session, 'assistant/message', {
-                message: { content: [{ type: 'text', text: answer }] },
+    const properties: Record<string, Record<string, unknown>> = {};
+    const required: string[] = [];
+    for (const [name, id] of Object.entries(root.dict || {})) {
+        const property = refs[String(id)];
+        if (property?.type === 'string') {
+            properties[name] = { type: 'string' };
+        } else if (property?.type === 'union') {
+            const values = (property.list || []).map((valueId: number) => {
+                const value = refs[String(valueId)];
+                if (value?.type !== 'const') throw new Error(`Unsupported Edge tool schema for ${name}`);
+                return value.value;
             });
-            return;
+            properties[name] = { type: 'string', enum: values };
+        } else {
+            throw new Error(`Unsupported Edge tool schema for ${name}`);
         }
-        throw new Error('Agent 工具调用次数超出限制');
+        if (property.meta?.description) properties[name].description = property.meta.description;
+        if (property.meta?.required) required.push(name);
     }
 
-    private async processPrompt(session: any) {
+    return {
+        type: 'object',
+        properties,
+        ...(required.length ? { required } : {}),
+        additionalProperties: false,
+    };
+}
+
+function unwrapValue(payload: any) {
+    if (payload?.result?.ok === false) {
+        throw new Error(payload.result.error?.message || 'Agent request failed');
+    }
+    if (payload?.result?.ok === true) return payload.result.value;
+    if (payload?.error?.message) throw new Error(payload.error.message);
+    return payload?.result?.value ?? payload?.value ?? payload;
+}
+
+async function resolveStatus(): Promise<RuntimeStatus> {
+    const starting = agentService?.getStarting();
+    const runtime = agentService?.getRuntime();
+    const bootError = agentService?.getBootError();
+    if (starting) return { state: 'starting', message: 'Agent runtime is starting' };
+    if (!runtime) {
+        return {
+            state: bootError ? 'error' : 'waiting',
+            message: bootError || 'Agent runtime is not ready',
+        };
+    }
+    try {
+        const selectedModel = await agentService.getActiveLlmModel();
+        if (!selectedModel) return { state: 'waiting', message: 'No enabled provider and model are configured' };
+        if (!selectedModel.credentialReadable) {
+            return { state: 'waiting', provider: selectedModel.provider, model: selectedModel.model, message: 'The stored API key cannot be decrypted; restore the original credential encryption key' };
+        }
+        if (!selectedModel.credentialConfigured) {
+            return { state: 'waiting', provider: selectedModel.provider, model: selectedModel.model, message: 'Configure an API key for the active provider' };
+        }
+        const created = unwrapValue(await callRuntime('/api/session.create', agentService.createEnvelope('session.create', {
+            provider: selectedModel.provider,
+            model: selectedModel.model,
+        })));
+        const sessionId = created?.sessionId;
+        if (!sessionId) return { state: 'ready' };
         try {
-            await this.complete(session);
+            const models = unwrapValue(await callRuntime('/api/session.models', agentService.createEnvelope('session.models', { sessionId })));
+            if (!models?.routable) {
+                return {
+                    state: 'error',
+                    provider: models?.current?.provider,
+                    model: models?.current?.model,
+                    message: 'The configured model is not registered in the Agent runtime',
+                };
+            }
+            return {
+                state: 'ready',
+                provider: models?.current?.provider,
+                model: models?.current?.model,
+            };
         } catch (error) {
-            const message = error instanceof Error && error.name === 'AbortError'
-                ? '模型请求超时，请稍后重试。'
-                : `Agent 请求失败：${(error as Error).message}`;
-            logger.warn('Agent turn failed for %s: %s', session.sessionId, message);
-            session.messages.push({ role: 'assistant', content: message });
-            this.event(session, 'assistant/message', { message: { content: [{ type: 'text', text: message }] } });
-        } finally {
-            session.running = false;
-            this.running.delete(session.sessionId);
-            this.event(session, 'turn/end', { reason: 'completed' });
+            return { state: 'ready', message: (error as Error).message };
         }
-    }
-
-    async rpc(method: string, payload: any = {}) {
-        if (method === 'session.list') {
-            return { items: this.store.sessions.map(({ sessionId, updatedAt, running }: any) => ({ sessionId, updatedAt, running: Boolean(running) })) };
-        }
-        if (method === 'session.create') {
-            const now = Date.now();
-            const session = { sessionId: randomUUID(), createdAt: now, updatedAt: now, running: false, messages: [], events: [] };
-            this.store.sessions.unshift(session);
-            this.persist();
-            return { sessionId: session.sessionId };
-        }
-        if (method === 'session.history') {
-            const session = this.session(payload.sessionId);
-            const requested = Number(payload.maxMessages) || 100;
-            const limit = Math.max(1, Math.min(500, requested));
-            return { events: session.events.slice(-limit) };
-        }
-        if (method === 'session.prompt') {
-            const session = this.session(payload.sessionId);
-            const text = textContent(payload.content);
-            if (!text) throw new Error('消息内容不能为空');
-            if (text.length > 16000) throw new Error('消息长度不能超过 16000 个字符');
-            if (session.running || this.running.has(session.sessionId)) throw new Error('该对话正在处理中');
-            if (!getActiveAgentModel()) throw new Error('没有启用的模型，请先检查模型配置和 API Key。');
-            session.running = true;
-            this.running.add(session.sessionId);
-            const content = [{ type: 'text', text }];
-            session.messages.push({ role: 'user', content: text });
-            this.event(session, 'user/message', { content });
-            void this.processPrompt(session);
-            return { accepted: true };
-        }
-        throw new Error(`不支持的 Agent RPC 方法：${method}`);
+    } catch (error) {
+        return { state: 'waiting', message: (error as Error).message };
     }
 }
 
-let runtime: EdgeAgentRuntime | undefined;
+function mapListItems(value: any) {
+    const items = Array.isArray(value?.items) ? value.items : [];
+    return {
+        items: items.map((item: any) => ({
+            sessionId: String(item.sessionId || item.id || ''),
+            updatedAt: Number(item.updatedAt || item.lastPromptAt || Date.now()),
+            running: Boolean(item.running),
+        })).filter((item: any) => item.sessionId),
+    };
+}
+
+function mapHistory(value: any) {
+    const events = Array.isArray(value?.events) ? value.events : [];
+    return {
+        events: events.map((entry: any, index: number) => {
+            const event = entry?.event || entry;
+            const seq = Number(event?.seq ?? entry?.seq ?? index + 1);
+            return {
+                seq,
+                event: {
+                    type: String(event?.type || 'unknown'),
+                    data: event?.data ?? {},
+                    timestamp: Number(event?.time || event?.timestamp || Date.now()),
+                },
+            };
+        }),
+    };
+}
+
+async function rpc(method: string, payload: any = {}, signal?: AbortSignal) {
+    const envelope = agentService.createEnvelope(method, payload);
+    if (method === 'approval.respond') {
+        const rpcId = String(payload.rpcId || '');
+        const sessionId = String(payload.sessionId || '');
+        const approvalId = String(payload.approvalId || '');
+        const outcome = String(payload.outcome || '');
+        if (!rpcId || !sessionId || !approvalId || !['allowed-once', 'rejected'].includes(outcome)) {
+            throw new Error('Approval response is invalid');
+        }
+        const response = await callRuntime('/api/respond', {
+            type: 'client-response',
+            rpcId,
+            result: { ok: true, value: { sessionId, approvalId, outcome } },
+        }, signal);
+        if (response?.accepted !== true) throw new Error('Approval request expired or was already answered');
+        return response;
+    }
+    if (method === 'session.list') {
+        return mapListItems(unwrapValue(await callRuntime('/api/session.list', envelope, signal)));
+    }
+    if (method === 'session.create') {
+        const selectedModel = await agentService.getActiveLlmModel();
+        const sessionPayload = {
+            ...payload,
+            ...(payload.provider && payload.model ? {} : selectedModel ? { provider: selectedModel.provider, model: selectedModel.model } : {}),
+        };
+        const value = unwrapValue(await callRuntime('/api/session.create', {
+            ...envelope,
+            payload: sessionPayload,
+        }, signal));
+        return { sessionId: String(value?.sessionId || '') };
+    }
+    if (method === 'session.delete') {
+        const sessionId = String(payload.sessionId || '');
+        if (!sessionId) throw new Error('Session ID is required');
+        return unwrapValue(await callRuntime('/api/session.delete', {
+            ...envelope,
+            payload: { sessionId },
+        }, signal));
+    }
+    if (method === 'session.history') {
+        return mapHistory(unwrapValue(await callRuntime('/api/session.history', {
+            ...envelope,
+            payload: {
+                sessionId: payload.sessionId,
+                maxMessages: payload.maxMessages,
+            },
+        }, signal)));
+    }
+    if (method === 'session.prompt') {
+        const content = Array.isArray(payload.content)
+            ? payload.content
+            : [{ type: 'text', text: String(payload.content || payload.text || '') }];
+        const value = unwrapValue(await callRuntime('/api/session.prompt', {
+            ...envelope,
+            payload: {
+                sessionId: payload.sessionId,
+                mode: payload.mode === 'steer' ? 'steer' : 'queue',
+                content,
+                ...(typeof payload.clientTimeZone === 'string' ? { clientTimeZone: payload.clientTimeZone } : {}),
+                ...(Array.isArray(payload.addonSnapshot) ? { addonSnapshot: payload.addonSnapshot } : {}),
+            },
+        }, signal));
+        return value?.accepted === false ? value : { accepted: true, ...value };
+    }
+    return unwrapValue(await callRuntime(`/api/${method}`, envelope, signal));
+}
+
+async function bootRuntime() {
+    if (!agentService) throw new Error('Agent service is not available');
+    return agentService.boot();
+}
 
 class EdgeAgentStatusHandler extends Handler<Context> {
     async get() {
         if (!requireEdgeAdmin(this)) return;
-        this.response.body = runtime?.status() || { state: 'starting' };
+        if (!agentService?.getRuntime() && !agentService?.getStarting() && !agentService?.getBootError()) void bootRuntime();
+        this.response.body = await resolveStatus();
     }
 }
 
@@ -382,54 +246,109 @@ class EdgeAgentRpcHandler extends Handler<Context> {
     async post() {
         if (!requireEdgeAdmin(this)) return;
         const body = this.request.body || {};
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
         try {
-            const result = await runtime!.rpc(String(body.method || ''), body.payload || {});
+            if (!agentService?.getRuntime()) await bootRuntime();
+            const result = await rpc(String(body.method || ''), body.payload || {}, controller.signal);
             this.response.body = { result: { ok: true, value: result } };
         } catch (error) {
+            const message = error instanceof Error && error.name === 'AbortError'
+                ? 'Agent request timed out'
+                : (error as Error).message;
             this.response.status = 400;
-            this.response.body = { error: { message: (error as Error).message } };
+            this.response.body = { error: { message } };
+        } finally {
+            clearTimeout(timer);
         }
+    }
+}
+
+class EdgeHostToolCatalogHandler extends Handler<Context> {
+    async post() {
+        if (!isHostToolBridgeAuthorized(this.request)) return hostToolError(this, 401, 'Agent host-tool bridge authentication required');
+        const sessionId = String(this.request.body?.sessionId || '').trim();
+        if (!sessionId) return hostToolError(this, 400, 'sessionId is required');
+        const tools = edgeServer.listTools()
+            .filter((tool: any) => tool.addonId === 'edge')
+            .map((tool: any) => {
+                const schema = tool.checkerArgs.find((argument: any) =>
+                    typeof argument === 'function' && typeof argument.toJSON === 'function');
+                if (!schema) throw new Error(`Tool ${tool.name} has no schema`);
+                return {
+                    name: tool.name,
+                    description: schema.meta.description,
+                    inputSchema: hostToolInputSchema(schema),
+                };
+            });
+        this.response.body = {
+            ok: true,
+            value: {
+                tools,
+                guidance: 'Use edge_status, edge_list_nodes, and edge_list_devices for Edge and Zigbee status questions. Use zigbee_control_device only for a direct user request to change a device; the user must approve each control action.',
+            },
+        };
+    }
+}
+
+class EdgeHostToolCallHandler extends Handler<Context> {
+    async post() {
+        if (!isHostToolBridgeAuthorized(this.request)) return hostToolError(this, 401, 'Agent host-tool bridge authentication required');
+        const body = this.request.body || {};
+        const name = String(body.name || '');
+        if (typeof body.sessionId !== 'string' || !body.sessionId.trim()) return hostToolError(this, 400, 'sessionId is required');
+        const registration = edgeServer.listTools().find((tool: any) => tool.addonId === 'edge' && tool.name === name);
+        if (!registration) return hostToolError(this, 404, 'Unknown Edge tool');
+        if (!body.args || typeof body.args !== 'object' || Array.isArray(body.args)) return hostToolError(this, 400, 'Tool arguments must be an object');
+        try {
+            const value = await edgeServer.executeTool(name, edgeContext, body.args, this);
+            this.response.body = { ok: true, value };
+        } catch (error) {
+            hostToolError(this, 400, (error as Error).message);
+        }
+    }
+}
+
+class EdgeAgentEventsHandler extends Handler<Context> {
+    async get() {
+        if (!requireEdgeAdmin(this)) return;
+        const context = this.context as any;
+        context.respond = false;
+        context.status = 200;
+        context.set('Content-Type', 'text/event-stream');
+        context.set('Cache-Control', 'no-cache, no-transform');
+        context.set('Connection', 'keep-alive');
+        context.res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-transform',
+            Connection: 'keep-alive',
+        });
+        context.res.write('retry: 3000\n\n');
+        const onEvent = (event: any) => {
+            try { context.res.write(`data: ${JSON.stringify(event)}\n\n`); } catch { /* closed */ }
+        };
+        const unsubscribe = agentService.subscribe(onEvent);
+        const heartbeat = setInterval(() => {
+            try { context.res.write(': keep-alive\n\n'); } catch { /* closed */ }
+        }, 20000);
+        context.res.on('close', () => {
+            clearInterval(heartbeat);
+            unsubscribe();
+        });
     }
 }
 
 export function apply(ctx: Context) {
     if (!isEdgeMode) return;
-    try {
-        runtime = new EdgeAgentRuntime();
-    } catch (error) {
-        logger.error('Failed to initialize Agent runtime: %s', (error as Error).message);
-    }
-    ctx.Route('edge-agent-status', '/api/agent/status', EdgeAgentStatusHandler);
-    ctx.Route('edge-agent-rpc', '/api/agent/rpc', EdgeAgentRpcHandler);
-    ctx.inject(['server'], ({ server }: any) => {
-        server.router.get('/api/agent/events', (context: any) => {
-            if (!isEdgeAdminAuthorized(context.request)) {
-                context.status = 401;
-                context.set('WWW-Authenticate', 'Basic realm="Ejunz Edge"');
-                context.body = { error: { message: 'edge admin authentication required' } };
-                return;
-            }
-            context.respond = false;
-            context.status = 200;
-            context.set('Content-Type', 'text/event-stream');
-            context.set('Cache-Control', 'no-cache, no-transform');
-            context.set('Connection', 'keep-alive');
-            context.res.writeHead(200, {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-cache, no-transform',
-                Connection: 'keep-alive',
-            });
-            context.res.write('retry: 3000\n\n');
-            const unsubscribe = runtime?.subscribe((event) => {
-                try { context.res.write(`data: ${JSON.stringify(event)}\n\n`); } catch {}
-            });
-            const heartbeat = setInterval(() => {
-                try { context.res.write(': keep-alive\n\n'); } catch {}
-            }, 20000);
-            context.res.on('close', () => {
-                clearInterval(heartbeat);
-                unsubscribe?.();
-            });
-        });
+    ctx.inject(['agent', 'server'], ({ agent, server }: any) => {
+        agentService = agent;
+        edgeServer = server;
+        edgeContext = ctx;
+        void bootRuntime();
+        ctx.Route('edge-agent-status', '/api/agent/status', EdgeAgentStatusHandler);
+        ctx.Route('edge-agent-rpc', '/api/agent/rpc', EdgeAgentRpcHandler);
+        ctx.Route('edge-agent-events', '/api/agent/events', EdgeAgentEventsHandler);
+        ctx.Route('edge-agent-host-tools-catalog', '/api/ejunz-agent/data/tools/catalog', EdgeHostToolCatalogHandler);
+        ctx.Route('edge-agent-host-tools-call', '/api/ejunz-agent/data/tools/call', EdgeHostToolCallHandler);
     });
 }

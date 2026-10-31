@@ -19,3 +19,8 @@ upstream:
   # The Edge-to-Ejunz WebSocket endpoint. Nodes must point to this edge's nodePath.
   endpoint: ''
   token: ''
+agent:
+  mongo:
+    # Independent MongoDB connection for this Edge Agent runtime.
+    uri: 'mongodb://127.0.0.1:27017'
+    database: 'ejunz_agent'

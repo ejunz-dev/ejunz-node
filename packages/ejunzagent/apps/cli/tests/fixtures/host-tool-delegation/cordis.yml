@@ -1,8 +1,0 @@
-- name: ./provider.ts
-- name: ../../../../../packages/examples/agent-spine-demo/src/index.ts
-  config:
-    workspaceContext: false
-    skills:
-      enabled: false
-    goals: false
-- name: '@ejunz/tool-host'

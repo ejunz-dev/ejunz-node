@@ -4,7 +4,7 @@ import { Handler } from '@ejunz/framework';
 import { Context } from 'cordis';
 import { Logger } from '../utils';
 import { isEdgeMode } from '../config';
-import { isEdgeAdminAuthorized, requireEdgeAdmin } from './edge-auth';
+import { AuthHandler, isEdgeAdminAuthorized } from './edge-auth';
 
 const logger = new Logger('handler/edge-agent');
 const REQUEST_TIMEOUT_MS = 120_000;
@@ -234,17 +234,15 @@ async function bootRuntime() {
     return agentService.boot();
 }
 
-class EdgeAgentStatusHandler extends Handler<Context> {
+class EdgeAgentStatusHandler extends AuthHandler {
     async get() {
-        if (!requireEdgeAdmin(this)) return;
         if (!agentService?.getRuntime() && !agentService?.getStarting() && !agentService?.getBootError()) void bootRuntime();
         this.response.body = await resolveStatus();
     }
 }
 
-class EdgeAgentRpcHandler extends Handler<Context> {
+class EdgeAgentRpcHandler extends AuthHandler {
     async post() {
-        if (!requireEdgeAdmin(this)) return;
         const body = this.request.body || {};
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -309,9 +307,8 @@ class EdgeHostToolCallHandler extends Handler<Context> {
     }
 }
 
-class EdgeAgentEventsHandler extends Handler<Context> {
+class EdgeAgentEventsHandler extends AuthHandler {
     async get() {
-        if (!requireEdgeAdmin(this)) return;
         const context = this.context as any;
         context.respond = false;
         context.status = 200;

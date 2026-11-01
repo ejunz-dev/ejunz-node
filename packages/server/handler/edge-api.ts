@@ -1,16 +1,14 @@
 // @ts-nocheck
-import { Handler } from '@ejunz/framework';
 import { Context } from 'cordis';
+import { AuthHandler, getEdgeAuthConfig, isEdgeAdminAuthorized } from './edge-auth';
 import { config, isEdgeMode, saveConfig } from '../config';
 import { edgeRegistry } from '../model/edge-registry';
 import { getCurrentDeviceState, sendNodeDeviceControl } from '../tools/edge';
 import { EDGE_WS_MAX_MESSAGE_BYTES, maskEndpoint, parseEdgeWsMessage, protocolMessage } from '@ejunz/protocol';
-import { getEdgeAuthConfig, isEdgeAdminAuthorized, requireEdgeAdmin as requireAdmin } from './edge-auth';
 
-class EdgeAuthConfigHandler extends Handler<Context> {
+class EdgeAuthConfigHandler extends AuthHandler {
     allowCors = true;
     async get() {
-        if (!requireAdmin(this)) return;
         const auth = getEdgeAuthConfig();
         this.response.body = {
             enabled: auth.enabled,
@@ -20,8 +18,6 @@ class EdgeAuthConfigHandler extends Handler<Context> {
     }
 
     async post() {
-        if (!requireAdmin(this)) return;
-
         const body = this.request.body || {};
         const auth = (config as any).auth || ((config as any).auth = {});
         if (body.enabled !== undefined) auth.enabled = Boolean(body.enabled);
@@ -36,10 +32,8 @@ class EdgeAuthConfigHandler extends Handler<Context> {
     }
 }
 
-class EdgeStatusHandler extends Handler<Context> {
+class EdgeStatusHandler extends AuthHandler {
     async get() {
-        if (!requireAdmin(this)) return;
-
         const upstream = (global as any).__edge_upstream;
         const headers = (this.request as any).headers || {};
         const forwardedProto = String(headers['x-forwarded-proto'] || 'http').split(',')[0].trim();
@@ -56,18 +50,14 @@ class EdgeStatusHandler extends Handler<Context> {
     }
 }
 
-class EdgeNodesHandler extends Handler<Context> {
+class EdgeNodesHandler extends AuthHandler {
     async get() {
-        if (!requireAdmin(this)) return;
-
         this.response.body = { nodes: edgeRegistry.list() };
     }
 }
 
-class EdgeNodeDevicesHandler extends Handler<Context> {
+class EdgeNodeDevicesHandler extends AuthHandler {
     async get() {
-        if (!requireAdmin(this)) return;
-
         const nodeId = String((this.request as any).params?.nodeId || '');
         const node = edgeRegistry.get(nodeId);
         if (!node) {
@@ -106,11 +96,9 @@ class EdgeNodeDevicesHandler extends Handler<Context> {
     }
 }
 
-class EdgeNodeDeviceControlHandler extends Handler<Context> {
+class EdgeNodeDeviceControlHandler extends AuthHandler {
     allowCors = true;
     async post() {
-        if (!requireAdmin(this)) return;
-
         const nodeId = String((this.request as any).params?.nodeId || '');
         if (!edgeRegistry.get(nodeId)) {
             this.response.status = 404;
@@ -134,11 +122,9 @@ class EdgeNodeDeviceControlHandler extends Handler<Context> {
     }
 }
 
-class EdgeAuthorizeHandler extends Handler<Context> {
+class EdgeAuthorizeHandler extends AuthHandler {
     allowCors = true;
     async post() {
-        if (!requireAdmin(this)) return;
-
         const nodeId = String((this.request as any).params?.nodeId || '');
         const node = edgeRegistry.get(nodeId);
         if (!node?.connection?.authorize) {
@@ -155,11 +141,9 @@ class EdgeAuthorizeHandler extends Handler<Context> {
     }
 }
 
-class EdgeRevokeHandler extends Handler<Context> {
+class EdgeRevokeHandler extends AuthHandler {
     allowCors = true;
     async post() {
-        if (!requireAdmin(this)) return;
-
         const nodeId = String((this.request as any).params?.nodeId || '');
         if (!edgeRegistry.get(nodeId)) {
             this.response.status = 404;
@@ -171,11 +155,9 @@ class EdgeRevokeHandler extends Handler<Context> {
     }
 }
 
-class EdgeUpstreamHandler extends Handler<Context> {
+class EdgeUpstreamHandler extends AuthHandler {
     allowCors = true;
     async get() {
-        if (!requireAdmin(this)) return;
-
         const upstream = (global as any).__edge_upstream;
         const current = (config as any).upstream || {};
         this.response.body = {
@@ -186,8 +168,6 @@ class EdgeUpstreamHandler extends Handler<Context> {
     }
 
     async post() {
-        if (!requireAdmin(this)) return;
-
         const body = this.request.body || {};
         const upstream = (config as any).upstream || {};
         if (body.enabled !== undefined) upstream.enabled = Boolean(body.enabled);
@@ -201,11 +181,9 @@ class EdgeUpstreamHandler extends Handler<Context> {
     }
 }
 
-class EdgeUpstreamRestartHandler extends Handler<Context> {
+class EdgeUpstreamRestartHandler extends AuthHandler {
     allowCors = true;
     async post() {
-        if (!requireAdmin(this)) return;
-
         await (global as any).__edge_upstream?.restart?.();
         this.response.body = { ok: 1 };
     }
@@ -224,10 +202,9 @@ export function apply(ctx: Context) {
     ctx.Route('edge-upstream-restart', '/api/edge/upstream/restart', EdgeUpstreamRestartHandler);
 
     // Long-polling endpoint for real-time device state updates (works where WebSocket is blocked)
-    ctx.Route('edge-poll', '/api/edge/poll', class extends Handler<Context> {
+    ctx.Route('edge-poll', '/api/edge/poll', class extends AuthHandler {
         allowCors = true;
         async get() {
-            if (!requireAdmin(this)) return;
             const nodeId = String(this.request.query.nodeId || '');
             if (!nodeId || !edgeRegistry.get(nodeId)) {
                 this.response.body = { error: 'node not found' };

@@ -1,11 +1,10 @@
 // @ts-nocheck
 import path from 'node:path';
 import { Context } from 'cordis';
-import { Handler } from '@ejunz/framework';
 import { isEdgeMode } from '../config';
 import { fs, Logger } from '../utils';
 import { resolveUiAssetPath } from '../../ui';
-import { isEdgeAdminAuthorized } from './edge-auth';
+import { AuthHandler } from './edge-auth';
 
 const logger = new Logger('handler/edge-ui');
 const uiNextInjectionMarker = '<!-- __EJUNZ_INJECTION__DO_NOT_REMOVE_THIS__ -->';
@@ -43,17 +42,11 @@ function registerEdgeUiRenderer(ctx: Context) {
     });
 }
 
-class EdgeUINextPageHandler extends Handler<Context> {
+class EdgeUINextPageHandler extends AuthHandler {
     pageName = 'edge_dashboard';
+    authFailureBody = 'Authentication required';
 
     async get() {
-        if (!isEdgeAdminAuthorized(this.request)) {
-            this.response.status = 401;
-            this.response.addHeader('WWW-Authenticate', 'Basic realm="Ejunz Edge"');
-            this.response.body = 'Authentication required';
-            return;
-        }
-
         this.response.type = 'text/html';
         if (!fs.existsSync(path.join(edgeUiNextDirectory(), 'index.html'))) {
             this.response.status = 503;
@@ -92,15 +85,10 @@ class EdgeUIAuthHandler extends EdgeUINextPageHandler {
     pageName = 'edge_auth';
 }
 
-class EdgeUINextAssetHandler extends Handler<Context> {
-    async get() {
-        if (!isEdgeAdminAuthorized(this.request)) {
-            this.response.status = 401;
-            this.response.addHeader('WWW-Authenticate', 'Basic realm="Ejunz Edge"');
-            this.response.body = 'Authentication required';
-            return;
-        }
+class EdgeUINextAssetHandler extends AuthHandler {
+    authFailureBody = 'Authentication required';
 
+    async get() {
         const assetName = String((this.request as any).params?.assetName || '');
         if (!/^[a-zA-Z0-9._-]+$/.test(assetName)) {
             this.response.status = 404;

@@ -1,4 +1,6 @@
 // @ts-nocheck
+import { Handler } from '@ejunz/framework';
+import { Context } from 'cordis';
 import { config } from '../config';
 
 export function getEdgeAuthConfig() {
@@ -48,10 +50,14 @@ export function isEdgeAdminAuthorized(request: any) {
     return Boolean(token) && token === authConfig.password;
 }
 
-export function requireEdgeAdmin(handler: any) {
-    if (isEdgeAdminAuthorized(handler.request)) return true;
-    handler.response.status = 401;
-    handler.response.addHeader('WWW-Authenticate', 'Basic realm="Ejunz Edge"');
-    handler.response.body = { error: 'edge admin authentication required' };
-    return false;
+export class AuthHandler extends Handler<Context> {
+    authFailureBody: unknown = { error: 'edge admin authentication required' };
+
+    async prepare() {
+        if (isEdgeAdminAuthorized(this.request)) return;
+        this.response.status = 401;
+        this.response.addHeader('WWW-Authenticate', 'Basic realm="Ejunz Edge"');
+        this.response.body = this.authFailureBody;
+        return 'after';
+    }
 }

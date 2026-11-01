@@ -1,9 +1,8 @@
-import { Handler } from '@ejunz/framework';
 import { Context } from 'cordis';
 import { AgentLlmConfig, AgentLlmProviderConfig, AgentMongoModel, llmCredentialRef } from '../model/agent';
 import { isEdgeMode } from '../config';
 import { Logger } from '../utils';
-import { requireEdgeAdmin } from './edge-auth';
+import { AuthHandler } from './edge-auth';
 
 const logger = new Logger('handler/edge-llm-config');
 let agentService: any;
@@ -108,9 +107,8 @@ function providerId(displayName: string, providers: AgentLlmProviderConfig[]) {
     return id;
 }
 
-class LlmConfigHandler extends Handler<Context> {
+class LlmConfigHandler extends AuthHandler {
     async get() {
-        if (!requireEdgeAdmin(this)) return;
         try {
             const store = getStore();
             const config = await store.loadLlmConfig();
@@ -145,9 +143,8 @@ class LlmConfigHandler extends Handler<Context> {
     }
 }
 
-class LlmProvidersHandler extends Handler<Context> {
+class LlmProvidersHandler extends AuthHandler {
     async post() {
-        if (!requireEdgeAdmin(this)) return;
         const body = this.request.body || {};
         const store = getStore();
         try {
@@ -217,9 +214,8 @@ class LlmProvidersHandler extends Handler<Context> {
     }
 }
 
-class LlmProviderSyncHandler extends Handler<Context> {
+class LlmProviderSyncHandler extends AuthHandler {
     async post() {
-        if (!requireEdgeAdmin(this)) return;
         const body = this.request.body || {};
         try {
             const store = getStore();
@@ -270,9 +266,8 @@ class LlmProviderSyncHandler extends Handler<Context> {
     }
 }
 
-class LlmModelsHandler extends Handler<Context> {
+class LlmModelsHandler extends AuthHandler {
     async post() {
-        if (!requireEdgeAdmin(this)) return;
         const body = this.request.body || {};
         if (typeof body.providerId !== 'string' || typeof body.modelId !== 'string' || typeof body.enabled !== 'boolean') {
             return respondError(this, 400, 'providerId、modelId 和 enabled 参数无效');
